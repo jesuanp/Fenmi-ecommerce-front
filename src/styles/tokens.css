@@ -1,0 +1,105 @@
+/* ── FENMI Design Tokens ─────────────────────────────
+   Sistema visual de las landings de producto FENMI.
+   Inter + lima/teal. Se usa en todo el ecommerce.
+   ────────────────────────────────────────────────── */
+:root {
+  --lime: #C9E96A;
+  --lime-light: #edfab0;
+  --teal: #2A6B7C;
+  --teal-dark: #1d4f5c;
+  --black: #111;
+  --dark: #1f1f1f;
+  --mid: #555;
+  --light: #999;
+  --border: #e5e5e5;
+  --bg: #fafafa;
+  --white: #fff;
+  --danger: #d1382c;
+  --star: #f5a623;
+
+  --font: 'Inter', Arial, Helvetica, sans-serif;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --max: 1440px;
+  --shadow: 0 12px 28px rgba(0, 0, 0, 0.07);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--dark);
+  background: var(--bg);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--lime);
+}
+
+.container {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 56px;
+}
+
+.section {
+  padding: 64px 0;
+}
+
+/* Bloques de contenido de la portada: un poco más de aire lateral */
+.container.section {
+  padding: 68px 72px;
+}
+
+@media (max-width: 600px) {
+  .container {
+    padding: 0 20px;
+  }
+  .container.section {
+    padding: 48px 20px;
+  }
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--teal);
+}
