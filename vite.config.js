@@ -13,11 +13,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://144.91.97.239:4002',
+        target: 'https://morris-pricing-disclose-maryland.trycloudflare.com',
         changeOrigin: true
       },
       '/uploads': {
-        target: 'http://144.91.97.239:4002',
+        target: 'https://morris-pricing-disclose-maryland.trycloudflare.com',
         changeOrigin: true
       }
     }
