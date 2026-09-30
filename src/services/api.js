@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const client = axios.create({
-  baseURL: import.meta.env?.VITE_API_URL || '/api',
+  baseURL: 'https://proyectovps.duckdns.org/api',
   timeout: 15000,
   withCredentials: true
 });
