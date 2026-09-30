@@ -11,8 +11,8 @@ export const authApi = {
   async me() {
     return client.get('/auth/me');
   },
-  async register({ firstName, lastName, email, password }) {
-    return (await client.post('/auth/register', { firstName, lastName, email, password })).data.data;
+  async register({ firstName, lastName, email, password, termsAccepted, privacyAccepted }) {
+    return (await client.post('/auth/register', { firstName, lastName, email, password, termsAccepted, privacyAccepted })).data.data;
   },
   async verifyEmail({ email, code }) {
     return (await client.post('/auth/verify-email', { email, code })).data.data;
