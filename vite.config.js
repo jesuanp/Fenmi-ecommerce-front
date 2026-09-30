@@ -13,11 +13,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'https://morris-pricing-disclose-maryland.trycloudflare.com',
+        target: 'https://proyectovps.duckdns.org',
         changeOrigin: true
       },
       '/uploads': {
-        target: 'https://morris-pricing-disclose-maryland.trycloudflare.com',
+        target: 'https://proyectovps.duckdns.org',
         changeOrigin: true
       }
     }
