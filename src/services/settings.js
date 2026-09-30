@@ -1,8 +1,8 @@
-import axios from 'axios';
+import client from './api';
 
 const settingsApi = {
   async get() {
-    return (await axios.get('/api/settings/public')).data.data;
+    return (await client.get('/settings/public')).data.data;
   }
 };
 
