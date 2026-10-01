@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, Link, Outlet, useNavigate } from 'react-router-dom';
 import useAuth from '@/stores/auth';
 import Toast from '@/components/Toast';
@@ -20,6 +20,7 @@ const NAV = [
 export default function AdminLayout() {
   const auth = useAuth();
   const nav = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (auth.status === 'guest' && auth.checked) {
@@ -36,20 +37,31 @@ export default function AdminLayout() {
     );
   }
 
+  const closeMenu = () => setMenuOpen(false);
+
   const logout = async () => {
+    closeMenu();
     await auth.logoutLocal();
     nav('/login', { replace: true });
   };
 
   return (
     <div className="admin-shell">
-      <aside className="admin-sidebar">
-        <Link to="/admin" className="admin-brand">
+      <div className={'admin-overlay' + (menuOpen ? ' show' : '')} onClick={closeMenu} />
+
+      <aside className={'admin-sidebar' + (menuOpen ? ' open' : '')}>
+        <Link to="/admin" className="admin-brand" onClick={closeMenu}>
           fenmi · admin
         </Link>
         <nav className="admin-nav">
           {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} className={(x) => (x.isActive ? 'active' : '')}>
+            <NavLink
+              key={n.to}
+              to={n.to}
+              end={n.end}
+              className={(x) => (x.isActive ? 'active' : '')}
+              onClick={closeMenu}
+            >
               <span className="nav-icon">{n.icon}</span>
               {n.label}
             </NavLink>
@@ -58,12 +70,18 @@ export default function AdminLayout() {
         <div className="admin-sidebar-foot">
           <div>{auth.user?.email}</div>
           <div style={{ marginTop: 6 }}>
-            <Link to="/" style={{ color: '#888' }}>Ver tienda →</Link>
+            <Link to="/" style={{ color: '#888' }} onClick={closeMenu}>Ver tienda →</Link>
           </div>
         </div>
       </aside>
+
       <main className="admin-main">
         <div className="admin-top">
+          <button className="admin-hamburger" onClick={() => setMenuOpen(true)} aria-label="Abrir menú">
+            <svg width="22" height="16" viewBox="0 0 22 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M1 1h20M1 8h20M1 15h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </button>
           <Link to="/" className="text-link" style={{ color: 'var(--teal)' }}>
             ← Volver a la tienda
           </Link>
