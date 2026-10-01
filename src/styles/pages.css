@@ -475,9 +475,10 @@
   z-index: 40;
 }
 .sort-pop {
-  right: 0;
-  left: auto;
+  left: 0;
+  right: auto;
   min-width: 260px;
+  max-width: calc(100vw - 32px);
 }
 .f-check {
   display: flex;
