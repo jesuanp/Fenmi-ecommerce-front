@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
 
@@ -6,6 +6,7 @@ export default function AdminSettingsPage() {
   const ui = useUI();
   const [settings, setSettings] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingHero, setUploadingHero] = useState(false);
 
   useEffect(() => { adminApi.getSettings().then(setSettings); }, []);
 
@@ -29,6 +30,24 @@ export default function AdminSettingsPage() {
     } catch { ui.showToast('Error al guardar'); } finally { setSaving(false); }
   };
 
+  const handleHeroUpload = async (field, file) => {
+    setUploadingHero(true);
+    try {
+      const result = await adminApi.uploadHero({
+        hero: field === 'hero' ? file : null,
+        heroVertical: field === 'heroVertical' ? file : null
+      });
+      const home = settings.home || {};
+      set('home', field === 'hero' ? 'heroImage' : 'heroImageVertical',
+        field === 'hero' ? result.heroUrl : result.heroVerticalUrl);
+      ui.showToast('Imagen subida');
+    } catch {
+      ui.showToast('Error al subir imagen');
+    } finally {
+      setUploadingHero(false);
+    }
+  };
+
   if (!settings) return <p>Cargando…</p>;
 
   const general = settings.storeGeneral || {};
@@ -50,6 +69,55 @@ export default function AdminSettingsPage() {
           <div className="afield"><label>Email</label><input value={general.email || ''} onChange={(e) => set('storeGeneral', 'email', e.target.value)} /></div>
           <div className="afield"><label>Teléfono</label><input value={general.phone || ''} onChange={(e) => set('storeGeneral', 'phone', e.target.value)} /></div>
           <div className="afield"><label>WhatsApp</label><input value={general.whatsapp || ''} onChange={(e) => set('storeGeneral', 'whatsapp', e.target.value)} /></div>
+        </div>
+      </div>
+
+      <div className="admin-card">
+        <h3 style={{ marginBottom: 12 }}>Portada (Hero)</h3>
+        <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 14 }}>
+          Sube las imágenes del banner principal de la página de inicio. Se muestran en desktop y mobile.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+          <div>
+            <p style={{ fontSize: 12, marginBottom: 8, fontWeight: 500 }}>Imagen desktop</p>
+            {settings.home?.heroImage && (
+              <img
+                src={settings.home.heroImage}
+                alt="Hero desktop"
+                style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 4, marginBottom: 8 }}
+              />
+            )}
+            <label className="btn" style={{ cursor: 'pointer', display: 'inline-block' }}>
+              {uploadingHero ? 'Subiendo…' : (settings.home?.heroImage ? 'Cambiar desktop' : 'Subir desktop')}
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => { if (e.target.files[0]) handleHeroUpload('hero', e.target.files[0]); }}
+                disabled={uploadingHero}
+              />
+            </label>
+          </div>
+          <div>
+            <p style={{ fontSize: 12, marginBottom: 8, fontWeight: 500 }}>Imagen mobile</p>
+            {settings.home?.heroImageVertical && (
+              <img
+                src={settings.home.heroImageVertical}
+                alt="Hero mobile"
+                style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 4, marginBottom: 8 }}
+              />
+            )}
+            <label className="btn" style={{ cursor: 'pointer', display: 'inline-block' }}>
+              {uploadingHero ? 'Subiendo…' : (settings.home?.heroImageVertical ? 'Cambiar mobile' : 'Subir mobile')}
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => { if (e.target.files[0]) handleHeroUpload('heroVertical', e.target.files[0]); }}
+                disabled={uploadingHero}
+              />
+            </label>
+          </div>
         </div>
       </div>
 

@@ -25,6 +25,13 @@ export const adminApi = {
     return client.post('/admin/upload/category', fd).then((r) => r.data.data);
   },
 
+  uploadHero: ({ hero, heroVertical }) => {
+    const fd = new FormData();
+    if (hero) fd.append('hero', hero);
+    if (heroVertical) fd.append('heroVertical', heroVertical);
+    return client.post('/admin/upload/hero', fd).then((r) => r.data.data);
+  },
+
   // Categorías y tags
   listCategories: () => client.get('/admin/categories').then((r) => r.data.data),
   createCategory: (b) => client.post('/admin/categories', b).then((r) => r.data.data),

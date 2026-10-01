@@ -71,24 +71,27 @@ export default function HomePage() {
     <>
       {blocks.map((block, i) => (
         <React.Fragment key={`${block.type}-${i}`}>
-          {renderBlock(block, blocksData)}
+          {renderBlock(block, blocksData, config)}
         </React.Fragment>
       ))}
     </>
   );
 }
 
-function renderBlock(block, data) {
+function renderBlock(block, data, config) {
   switch (block.type) {
-    case 'hero':
+    case 'hero': {
+      const heroImg = config?.home?.heroImage || '/uploads/hero/hero.jpg?v=1';
+      const heroImgV = config?.home?.heroImageVertical || '/uploads/hero/hero_vertical.jpg?v=1';
       return (
         <section className="hero">
           <picture>
-            <source media="(max-width: 768px)" srcSet="/uploads/hero/hero_vertical.jpg?v=1" />
-            <img className="hero-img" src="/uploads/hero/hero.jpg?v=1" alt="" />
+            <source media="(max-width: 768px)" srcSet={heroImgV} />
+            <img className="hero-img" src={heroImg} alt="" />
           </picture>
         </section>
       );
+    }
     case 'marquee':
       return (
         <div className="marquee">
