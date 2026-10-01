@@ -444,6 +444,9 @@
 
 /* Responsive header/footer */
 @media (max-width: 900px) {
+  :root {
+    --header-height: 58px;
+  }
   .header-inner {
     grid-template-columns: auto 1fr auto;
     height: 58px;
@@ -454,6 +457,7 @@
   }
   .menu-btn {
     display: grid;
+    line-height: 1;
   }
   .brand {
     font-size: 21px;

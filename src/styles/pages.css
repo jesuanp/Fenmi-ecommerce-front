@@ -15,7 +15,7 @@
   place-items: center;
   max-width: var(--max);
   margin: 0 auto;
-  border-radius: 18px;
+  border-radius: 0;
 }
 .hero::before {
   content: '';
@@ -799,7 +799,7 @@
 @media (max-width: 600px) {
   .hero {
     min-height: 78vh;
-    border-radius: 14px;
+    border-radius: 0;
   }
   .hero-copy h1 {
     font-size: clamp(38px, 9vw, 64px);
