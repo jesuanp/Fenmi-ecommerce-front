@@ -5,6 +5,16 @@
   flex-direction: column;
 }
 
+/* Páginas con header opaco (no homepage/hero) */
+.catalog-container,
+.product-detail,
+.cart-page,
+.checkout-page,
+.account-page,
+.page-with-header {
+  padding-top: var(--header-height, 64px);
+}
+
 /* Hero */
 .hero {
   position: relative;

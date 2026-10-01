@@ -163,7 +163,9 @@ export default function Header() {
             {cart.count() > 0 && <span className="dot">{cart.count()}</span>}
           </button>
           <button className="menu-btn" aria-label="Abrir menú" onClick={() => ui.toggleMenu()}>
-            ☰
+            <svg width="22" height="16" viewBox="0 0 22 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M1 1h20M1 8h20M1 15h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
           </button>
         </div>
       </div>
