@@ -5,14 +5,16 @@
   flex-direction: column;
 }
 
-/* Páginas con header opaco (no homepage/hero) */
+/* Páginas con header opaco (no homepage/hero) — espaciado para el header fixed */
+.container.catalog-container,
 .catalog-container,
 .product-detail,
 .cart-page,
 .checkout-page,
 .account-page,
-.page-with-header {
-  padding-top: var(--header-height, 64px);
+.page-with-header,
+.page-container {
+  padding-top: var(--header-height, 64px) !important;
 }
 
 /* Hero */
