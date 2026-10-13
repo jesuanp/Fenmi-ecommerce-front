@@ -41,8 +41,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await authApi.register(form);
-      setStep(1);
-      ui.showToast('Te enviamos un código de verificación');
+      nav('/verify-email?email=' + encodeURIComponent(form.email), { replace: true });
     } catch (err) {
       setError(errMsg(err, 'No pudimos registrarte.'));
     } finally {

@@ -62,6 +62,13 @@ export default function LoginPage() {
             aria-label="Contraseña"
           />
           {error && <p className="form-error">{error}</p>}
+          {error && error.includes('verificar tu correo') && email && (
+            <p style={{ fontSize: 13, marginTop: 8 }}>
+              <Link to={`/verify-email?email=${encodeURIComponent(email)}`}>
+                Verificar mi correo →
+              </Link>
+            </p>
+          )}
           <button className="btn block" disabled={loading}>
             {loading ? 'Entrando…' : 'Entrar'}
           </button>

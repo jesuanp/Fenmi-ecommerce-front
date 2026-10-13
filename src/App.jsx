@@ -14,6 +14,7 @@ import RegisterPage from './pages/RegisterPage';
 
 // Carga diferida (code splitting) para páginas pesadas / admin.
 const SearchPage = lazy(() => import('./pages/SearchPage'));
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 const CheckoutSuccessPage = lazy(() => import('./pages/CheckoutSuccessPage'));
 const AccountOrdersPage = lazy(() => import('./pages/AccountOrdersPage'));
@@ -81,6 +82,7 @@ export default function App() {
           <Route path="policies" element={<PoliciesPage />} />
           <Route path="login" element={<LoginPage />} />
           <Route path="register" element={<RegisterPage />} />
+          <Route path="verify-email" element={<Lazy><VerifyEmailPage /></Lazy>} />
           <Route path="account/orders" element={<Lazy><AccountOrdersPage /></Lazy>} />
           <Route path="account/orders/:id" element={<Lazy><AccountOrderDetailPage /></Lazy>} />
           <Route path="account/wishlist" element={<Lazy><WishlistPage /></Lazy>} />
