@@ -2,18 +2,27 @@ import React from 'react';
 import useUI from '@/stores/ui';
 import CatalogSidebar from './CatalogSidebar';
 
-export default function FilterDrawer({ products, current, onToggleParam, onPriceApply }) {
+export default function FilterDrawer({ products, total, current, onToggleParam, onPriceApply, onClearAll }) {
   const ui = useUI();
-
-  if (!ui.filterOpen) return null;
+  const open = ui.filterOpen;
 
   return (
     <>
-      <div className={'overlay' + (ui.filterOpen ? ' show' : '')} onClick={() => ui.closeFilters()} />
-      <aside className={'filter-drawer' + (ui.filterOpen ? ' open' : '')}>
+      <div
+        className={'overlay' + (open ? ' show' : '')}
+        onClick={() => ui.closeFilters()}
+        style={{ pointerEvents: open ? 'auto' : 'none' }}
+      />
+      <aside
+        className={'filter-drawer' + (open ? ' open' : '')}
+        aria-hidden={!open}
+      >
+        <div className="drawer-handle" />
         <div className="drawer-head">
           <strong>Filtros</strong>
-          <button className="drawer-close" onClick={() => ui.closeFilters()}>✕</button>
+          <button className="drawer-close" onClick={() => ui.closeFilters()} aria-label="Cerrar filtros">
+            ✕
+          </button>
         </div>
         <div className="filter-drawer-body">
           <CatalogSidebar
@@ -24,8 +33,13 @@ export default function FilterDrawer({ products, current, onToggleParam, onPrice
           />
         </div>
         <div className="filter-drawer-foot">
+          {onClearAll && (
+            <button className="btn-sm ghost" onClick={onClearAll} type="button">
+              Limpiar
+            </button>
+          )}
           <button className="btn block" onClick={() => ui.closeFilters()}>
-            Ver {products?.length || 0} resultados
+            Ver {total || 0} resultados
           </button>
         </div>
       </aside>

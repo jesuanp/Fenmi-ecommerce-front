@@ -5,6 +5,7 @@ import Footer from '@/components/Footer';
 import CartDrawer from '@/components/CartDrawer';
 import MobileMenu from '@/components/MobileMenu';
 import Toast from '@/components/Toast';
+import WhatsAppFloat from '@/components/WhatsAppFloat';
 import useAuth from '@/stores/auth';
 import useCart from '@/stores/cart';
 import useWishlist from '@/stores/wishlist';
@@ -40,6 +41,7 @@ export default function PublicLayout() {
       <CartDrawer />
       <MobileMenu />
       <Toast />
+      <WhatsAppFloat />
     </div>
   );
 }

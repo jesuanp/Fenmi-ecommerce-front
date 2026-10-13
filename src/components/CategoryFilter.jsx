@@ -8,15 +8,15 @@ export default function CategoryFilter({ categories = [], selected, onToggle }) 
       {categories.map((cat) => {
         const isSelected = selected === cat.slug;
         return (
-          <label key={cat.slug} className="cat-item">
-            <input
-              type="radio"
-              name="category"
-              checked={isSelected}
-              onChange={() => onToggle(isSelected ? null : cat.slug)}
-            />
-            <span>{cat.name}</span>
-          </label>
+          <button
+            key={cat.slug}
+            type="button"
+            className={'cat-pill' + (isSelected ? ' selected' : '')}
+            onClick={() => onToggle(isSelected ? null : cat.slug)}
+            aria-pressed={isSelected}
+          >
+            {cat.name}
+          </button>
         );
       })}
     </div>

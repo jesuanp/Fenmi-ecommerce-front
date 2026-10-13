@@ -5,6 +5,8 @@ import SizeFilter from './SizeFilter';
 import PriceFilter from './PriceFilter';
 import CategoryFilter from './CategoryFilter';
 
+const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', '1XL', '2XL', '3XL'];
+
 function Accordion({ label, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -22,11 +24,9 @@ function Accordion({ label, children, defaultOpen = false }) {
 function extractColors(products) {
   const seen = new Map();
   for (const p of products || []) {
-    for (const v of p.variants || []) {
-      const hex = v.colorHex || v.color?.hex;
-      const name = v.color || v.color?.name;
-      if (hex && !seen.has(hex)) {
-        seen.set(hex, { name: name || hex, hex });
+    for (const c of p.colors || []) {
+      if (c && c.hex && !seen.has(c.hex)) {
+        seen.set(c.hex, { name: c.name, hex: c.hex });
       }
     }
   }
@@ -36,12 +36,18 @@ function extractColors(products) {
 function extractSizes(products) {
   const seen = new Set();
   for (const p of products || []) {
-    for (const v of p.variants || []) {
-      const size = v.size || v.size?.name;
-      if (size) seen.add(size);
+    for (const s of p.sizes || []) {
+      if (s) seen.add(s);
     }
   }
-  return Array.from(seen).sort();
+  return Array.from(seen).sort((a, b) => {
+    const ai = SIZE_ORDER.indexOf(a);
+    const bi = SIZE_ORDER.indexOf(b);
+    if (ai === -1 && bi === -1) return String(a).localeCompare(String(b));
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
 }
 
 function computePriceRange(products) {

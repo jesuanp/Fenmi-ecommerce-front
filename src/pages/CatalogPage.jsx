@@ -33,7 +33,8 @@ export default function CatalogPage() {
   const searchKey = searchParams.toString();
 
   useEffect(() => {
-    setState({ loading: true, data: null });
+    // Mantener los productos anteriores mientras se recarga para evitar saltos de layout.
+    setState((s) => ({ ...s, loading: true }));
     productApi
       .list({
         page: current.page || 1,
@@ -48,7 +49,7 @@ export default function CatalogPage() {
         inStock: current.inStock
       })
       .then((res) => setState({ loading: false, data: res }))
-      .catch(() => setState({ loading: false, data: null }));
+      .catch(() => setState((s) => ({ ...s, loading: false })));
   }, [searchKey]);
 
   const update = (patch) => {
@@ -82,16 +83,23 @@ export default function CatalogPage() {
   const clearAll = () => navigate('/catalog');
 
   const hasActiveFilters = current.category || current.color || current.size || current.minPrice || current.maxPrice || current.inStock;
+  const isFirstLoad = state.loading && !state.data;
+  const isReloading = state.loading && !!state.data;
 
   return (
     <div className="container catalog-container">
       <h1 className="page-title" style={{ marginBottom: 4 }}>Catálogo</h1>
 
-      {/* Top bar — desktop sort + mobile filter button */}
+      {/* Top bar — sort + filter button (always visible) */}
       <div className="catalog-topbar">
         <div className="topbar-left">
           <button className="btn filters-btn" onClick={() => ui.openFilters()}>
-            + Filtros
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="7" y1="12" x2="20" y2="12" />
+              <line x1="10" y1="18" x2="20" y2="18" />
+            </svg>
+            Filtros
             {hasActiveFilters && <span className="filter-badge" />}
           </button>
           <SortPopover
@@ -108,19 +116,21 @@ export default function CatalogPage() {
         </div>
       </div>
 
-      {/* Layout: sidebar + grid */}
+      {/* Layout: sidebar nativo (desktop) + grid */}
       <div className="catalog-layout">
-        {/* Desktop sidebar */}
-        <CatalogSidebar
-          products={state.data?.data}
-          current={current}
-          onToggleParam={toggleParam}
-          onPriceApply={handlePriceApply}
-        />
+        <div className="catalog-sidebar-wrap">
+          <CatalogSidebar
+            products={state.data?.data}
+            current={current}
+            onToggleParam={toggleParam}
+            onPriceApply={handlePriceApply}
+          />
+        </div>
 
-        {/* Product grid */}
         <div className="catalog-main">
-          {state.loading ? (
+          {isReloading && <div className="catalog-loading-overlay" aria-hidden="true" />}
+
+          {isFirstLoad ? (
             <div className="product-grid">
               {Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className="product-card skeleton" style={{ aspectRatio: '4/5' }} />
@@ -144,12 +154,14 @@ export default function CatalogPage() {
         </div>
       </div>
 
-      {/* Mobile filter drawer */}
+      {/* Filter drawer (bottom sheet en móvil, modal lateral en desktop) */}
       <FilterDrawer
         products={state.data?.data}
+        total={state.data?.pagination?.total || 0}
         current={current}
         onToggleParam={toggleParam}
         onPriceApply={handlePriceApply}
+        onClearAll={clearAll}
       />
     </div>
   );
