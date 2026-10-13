@@ -74,6 +74,11 @@ export const adminApi = {
   getSettings: () => client.get('/admin/settings').then((r) => r.data.data),
   updateSettings: (b) => client.put('/admin/settings', b).then((r) => r.data.data),
 
+  // Devoluciones (admin)
+  listReturns: (p) => client.get('/admin/returns', { params: p }).then((r) => r.data.data),
+  approveReturn: (id, adminNote) => client.post(`/admin/returns/${id}/approve`, { adminNote }).then((r) => r.data.data),
+  rejectReturn: (id, adminNote) => client.post(`/admin/returns/${id}/reject`, { adminNote }).then((r) => r.data.data),
+
   // Auditoría
   auditLogs: (p) => client.get('/admin/audit-logs', { params: p }).then((r) => r.data.data)
 };

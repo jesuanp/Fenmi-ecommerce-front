@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import useAuth from '@/stores/auth';
 import useUI from '@/stores/ui';
 import { orderApi } from '@/services/orders';
+import { returnsApi } from '@/services/returns';
 import { money } from '@/services/settings';
 
 const STATUS_LABELS = {
@@ -15,6 +16,12 @@ const STATUS_LABELS = {
   REFUNDED: 'Reembolsado'
 };
 
+const RETURN_STATUS_LABELS = {
+  PENDING: 'En revisión',
+  APPROVED: 'Aprobada',
+  REJECTED: 'Rechazada'
+};
+
 const STATUSES = ['', 'PENDING_PAYMENT', 'PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'];
 
 export default function AccountOrdersPage() {
@@ -24,6 +31,7 @@ export default function AccountOrdersPage() {
   const [status, setStatus] = useState('');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [returns, setReturns] = useState([]);
 
   const load = () => {
     setLoading(true);
@@ -34,10 +42,26 @@ export default function AccountOrdersPage() {
       .finally(() => setLoading(false));
   };
 
+  const loadReturns = () => {
+    if (auth.status !== 'authenticated') {
+      setReturns([]);
+      return;
+    }
+    returnsApi
+      .mine()
+      .then((rows) => setReturns(rows || []))
+      .catch(() => setReturns([]));
+  };
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
+
+  useEffect(() => {
+    if (auth.status === 'authenticated') loadReturns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.status]);
 
   useEffect(() => {
     if (auth.status === 'guest' && auth.checked) {
@@ -127,6 +151,35 @@ export default function AccountOrdersPage() {
         <div className="empty-state">
           <h3>No hay pedidos</h3>
           <Link to="/catalog" className="btn lime">Ver catálogo</Link>
+        </div>
+      )}
+
+      {auth.status === 'authenticated' && returns.length > 0 && (
+        <div style={{ marginTop: 40 }}>
+          <h2 className="page-title" style={{ fontSize: 22, marginBottom: 14 }}>
+            Mis solicitudes de devolución
+          </h2>
+          <div className="orders-table">
+            {returns.map((r) => (
+              <div className="order-row" key={r.id} style={{ gridTemplateColumns: '1fr auto 1fr auto' }}>
+                <div className="order-main">
+                  <strong>{r.order?.orderNumber || `Pedido #${r.orderId}`}</strong>
+                  <span className="order-date">Solicitud #{r.id} · {new Date(r.createdAt).toLocaleDateString('es-CO')}</span>
+                </div>
+                <div>
+                  <span className={'order-status ' + (r.status === 'APPROVED' ? 'delivered' : r.status === 'REJECTED' ? 'cancelled' : 'pending')}>
+                    {RETURN_STATUS_LABELS[r.status] || r.status}
+                  </span>
+                </div>
+                <div style={{ color: 'var(--mid)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {r.adminNote ? <em>"{r.adminNote}"</em> : <span style={{ opacity: 0.7 }}>"{r.reason}"</span>}
+                </div>
+                <div className="order-actions">
+                  <Link to={`/account/orders/${r.orderId}`} className="text-link">Ver pedido</Link>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

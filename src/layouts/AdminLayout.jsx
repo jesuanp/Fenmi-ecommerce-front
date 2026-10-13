@@ -9,6 +9,7 @@ const NAV = [
   { to: '/admin/categories', icon: '☰', label: 'Categorías' },
   { to: '/admin/tags', icon: '#', label: 'Etiquetas' },
   { to: '/admin/orders', icon: '❒', label: 'Pedidos' },
+  { to: '/admin/returns', icon: '↩', label: 'Devoluciones' },
   { to: '/admin/users', icon: '◎', label: 'Clientes' },
   { to: '/admin/inventory', icon: '▥', label: 'Inventario' },
   { to: '/admin/reviews', icon: '★', label: 'Reseñas' },

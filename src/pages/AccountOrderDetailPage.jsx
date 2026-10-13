@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import useAuth from '@/stores/auth';
 import useUI from '@/stores/ui';
 import { orderApi } from '@/services/orders';
+import { returnsApi } from '@/services/returns';
 import { money } from '@/services/settings';
 import { usePageTitle } from '@/hooks/usePageTitle';
 
@@ -16,12 +17,23 @@ const STATUS_LABELS = {
   REFUNDED: 'Reembolsado'
 };
 
+const RETURNABLE = ['PAID', 'SHIPPED', 'DELIVERED'];
+const RETURN_STATUS_LABELS = {
+  PENDING: 'En revisión',
+  APPROVED: 'Aprobada',
+  REJECTED: 'Rechazada'
+};
+
 export default function AccountOrderDetailPage() {
   const { id } = useParams();
   const auth = useAuth();
   const ui = useUI();
   const [order, setOrder] = useState(null);
   const [error, setError] = useState(false);
+  const [existingReturn, setExistingReturn] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   usePageTitle('Detalle de pedido');
 
   const load = () => {
@@ -31,10 +43,26 @@ export default function AccountOrderDetailPage() {
       .catch(() => setError(true));
   };
 
+  const loadReturn = () => {
+    if (auth.status !== 'authenticated') return;
+    returnsApi
+      .mine()
+      .then((rows) => {
+        const match = (rows || []).find((r) => r.orderId === Number(id));
+        setExistingReturn(match || null);
+      })
+      .catch(() => setExistingReturn(null));
+  };
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    if (auth.status === 'authenticated' && order) loadReturn();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.status, order?.id]);
 
   if (error) {
     return (
@@ -57,6 +85,32 @@ export default function AccountOrderDetailPage() {
     }
   };
 
+  const canRequestReturn =
+    auth.status === 'authenticated' &&
+    RETURNABLE.includes(order.status) &&
+    (!existingReturn || existingReturn.status === 'REJECTED');
+
+  const submitReturn = async (e) => {
+    e.preventDefault();
+    if (reason.trim().length < 5) {
+      ui.showToast('Cuéntanos el motivo (mínimo 5 caracteres).');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const created = await returnsApi.create({ orderId: order.id, reason: reason.trim() });
+      setExistingReturn(created);
+      setModalOpen(false);
+      setReason('');
+      ui.showToast('Solicitud enviada. Te avisaremos por correo.');
+    } catch (err) {
+      const msg = err?.response?.data?.error?.message || 'No se pudo enviar la solicitud';
+      ui.showToast(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="container" style={{ padding: '56px 56px 72px', maxWidth: 980 }}>
       <div className="account-head">
@@ -69,6 +123,34 @@ export default function AccountOrderDetailPage() {
         </div>
         <Link to="/account/orders" className="btn-sm">← Mis pedidos</Link>
       </div>
+
+      {existingReturn && (
+        <div className="admin-card" style={{ borderLeft: '4px solid var(--teal, #2A6B7C)' }}>
+          <h3 style={{ marginTop: 0 }}>Solicitud de devolución</h3>
+          <p style={{ margin: '4px 0' }}>
+            Estado:{' '}
+            <span className={'status-badge ' + (existingReturn.status === 'APPROVED' ? 'paid' : existingReturn.status === 'REJECTED' ? 'cancelled' : 'pending')}>
+              {RETURN_STATUS_LABELS[existingReturn.status] || existingReturn.status}
+            </span>
+          </p>
+          <p style={{ margin: '4px 0', color: 'var(--mid)' }}>
+            Motivo: {existingReturn.reason}
+          </p>
+          {existingReturn.adminNote && (
+            <p style={{ margin: '4px 0', color: 'var(--mid)' }}>
+              Respuesta del equipo: {existingReturn.adminNote}
+            </p>
+          )}
+          <p style={{ margin: '4px 0', fontSize: 12, color: 'var(--mid)' }}>
+            Solicitud #{existingReturn.id} · {new Date(existingReturn.createdAt).toLocaleString('es-CO')}
+          </p>
+          {existingReturn.status === 'REJECTED' && canRequestReturn && (
+            <button className="btn outline small" style={{ marginTop: 8 }} onClick={() => setModalOpen(true)}>
+              Crear nueva solicitud
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="detail-grid">
         <div className="admin-card detail-section">
@@ -92,6 +174,11 @@ export default function AccountOrderDetailPage() {
           {order.status === 'PENDING_PAYMENT' && (
             <button className="btn outline small" style={{ marginTop: 12, color: 'var(--danger)' }} onClick={cancel}>
               Cancelar pedido
+            </button>
+          )}
+          {canRequestReturn && (
+            <button className="btn outline small" style={{ marginTop: 12 }} onClick={() => setModalOpen(true)}>
+              Solicitar devolución
             </button>
           )}
         </div>
@@ -123,6 +210,42 @@ export default function AccountOrderDetailPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {modalOpen && (
+        <div className="modal-backdrop" onClick={() => !submitting && setModalOpen(false)}>
+          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submitReturn} style={{ maxWidth: 480 }}>
+            <h3 style={{ marginTop: 0 }}>Solicitar devolución</h3>
+            <p style={{ color: 'var(--mid)', fontSize: 13, marginTop: -6 }}>
+              Cuéntanos por qué quieres devolver el pedido {order.orderNumber}. El equipo de FENMI revisará tu caso
+              y te responderá por correo electrónico.
+            </p>
+            <textarea
+              autoFocus
+              rows={5}
+              minLength={5}
+              maxLength={1000}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Ej. Recibí la prenda pero la talla no me queda bien…"
+              style={{ width: '100%', resize: 'vertical' }}
+              required
+            />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button
+                type="button"
+                className="btn outline small"
+                onClick={() => setModalOpen(false)}
+                disabled={submitting}
+              >
+                Cancelar
+              </button>
+              <button type="submit" className="btn lime small" disabled={submitting}>
+                {submitting ? 'Enviando…' : 'Enviar solicitud'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

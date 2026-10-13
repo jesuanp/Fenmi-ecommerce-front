@@ -14,10 +14,12 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'https://proyectovps.duckdns.org',
+        // target: 'http://localhost:4002',
         changeOrigin: true
       },
       '/uploads': {
         target: 'https://proyectovps.duckdns.org',
+        // target: 'http://localhost:4002',
         changeOrigin: true
       }
     }
