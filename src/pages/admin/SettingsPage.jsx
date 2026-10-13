@@ -3,7 +3,7 @@ import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
 
 const BLOCK_TYPES = [
-  { value: 'hero', label: 'Hero (banner)' },
+  { value: 'hero', label: 'Hero (banner principal)' },
   { value: 'feature', label: 'Características' },
   { value: 'category', label: 'Categorías' },
   { value: 'testimonial', label: 'Testimonios' },
@@ -141,7 +141,7 @@ export default function AdminSettingsPage() {
             {settings.home?.heroImage && (
               <img
                 src={settings.home.heroImage}
-                alt="Hero desktop"
+                alt="Imagen principal de escritorio"
                 style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 4, marginBottom: 8 }}
               />
             )}
@@ -161,7 +161,7 @@ export default function AdminSettingsPage() {
             {settings.home?.heroImageVertical && (
               <img
                 src={settings.home.heroImageVertical}
-                alt="Hero mobile"
+                alt="Imagen principal de móvil"
                 style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 4, marginBottom: 8 }}
               />
             )}
@@ -208,7 +208,7 @@ export default function AdminSettingsPage() {
                 <input value={b.title || ''} onChange={(e) => setBlock(idx, { title: e.target.value })} />
               </div>
               <div className="afield">
-                <label>Eyebrow (texto pequeño arriba)</label>
+                <label>Etiqueta superior</label>
                 <input value={b.eyebrow || ''} onChange={(e) => setBlock(idx, { eyebrow: e.target.value })} />
               </div>
               <div className="afield">
@@ -336,7 +336,7 @@ export default function AdminSettingsPage() {
       </div>
 
       <div className="admin-card">
-        <h3 style={{ marginBottom: 12 }}>Footer</h3>
+        <h3 style={{ marginBottom: 12 }}>Pie de página</h3>
         <div className="form-grid">
           <div className="afield" style={{ gridColumn: '1 / -1' }}>
             <label>Texto "Acerca de"</label>

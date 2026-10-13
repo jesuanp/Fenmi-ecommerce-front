@@ -169,7 +169,7 @@ export default function ProductFormPage() {
                 {sizes.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
               <input placeholder="SKU" value={v.sku} onChange={(e) => setVariant(i, 'sku', e.target.value)} />
-              <input type="number" min="0" placeholder="Stock" value={v.stock} onChange={(e) => setVariant(i, 'stock', e.target.value)} />
+              <input type="number" min="0" placeholder="Existencias" value={v.stock} onChange={(e) => setVariant(i, 'stock', e.target.value)} />
               <input type="number" placeholder="Precio (opc.)" value={v.priceOverride} onChange={(e) => setVariant(i, 'priceOverride', e.target.value)} />
               <button type="button" className="btn-sm danger" onClick={() => delVariant(i)}>✕</button>
             </div>

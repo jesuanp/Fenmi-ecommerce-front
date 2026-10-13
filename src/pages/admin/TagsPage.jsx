@@ -29,7 +29,7 @@ export default function AdminTagsPage() {
       <h1 className="admin-title">Etiquetas</h1>
       <div className="admin-card" style={{ maxWidth: 440 }}>
         <form className="form-grid" onSubmit={save}>
-          <div className="afield"><label>{editId ? 'Editar' : 'Nueva'} etiqueta</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="NEW, BEST SELLER…" required /></div>
+          <div className="afield"><label>{editId ? 'Editar' : 'Nueva'} etiqueta</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="NUEVO, MÁS VENDIDO…" required /></div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
             <button className="btn lime small" type="submit">{editId ? 'Guardar' : 'Crear'}</button>
             {editId && <button type="button" className="btn-sm" onClick={() => { setEditId(null); setName(''); }}>Cancelar</button>}

@@ -20,7 +20,7 @@ export default function PriceFilter({ min: minVal, max: maxVal, selectedMin, sel
     <div className="filter-price">
       <div className="price-inputs">
         <div className="price-input-wrap">
-          <span className="price-label">Min</span>
+          <span className="price-label">Mín</span>
           <input
             type="number"
             className="price-input"
@@ -32,7 +32,7 @@ export default function PriceFilter({ min: minVal, max: maxVal, selectedMin, sel
         </div>
         <span className="price-sep">—</span>
         <div className="price-input-wrap">
-          <span className="price-label">Max</span>
+          <span className="price-label">Máx</span>
           <input
             type="number"
             className="price-input"

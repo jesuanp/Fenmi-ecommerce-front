@@ -39,7 +39,7 @@ export default function AdminDashboard() {
   const s = data.stats;
   return (
     <div>
-      <h1 className="admin-title">Dashboard</h1>
+      <h1 className="admin-title">Panel</h1>
 
       <div className="stats-grid">
         <div className="stat-card"><div className="stat-label">Ventas totales</div><div className="stat-value">{money(s.totalSales)}</div></div>

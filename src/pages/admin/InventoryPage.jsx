@@ -36,7 +36,7 @@ export default function AdminInventoryPage() {
       </div>
       <div className="admin-card">
         <table className="admin-table">
-          <thead><tr><th>Producto</th><th>Color</th><th>Talla</th><th>SKU</th><th>Stock</th><th></th></tr></thead>
+            <thead><tr><th>Producto</th><th>Color</th><th>Talla</th><th>SKU</th><th>Existencias</th><th></th></tr></thead>
           <tbody>
             {data?.data?.map((v) => (
               <tr key={v.id}>

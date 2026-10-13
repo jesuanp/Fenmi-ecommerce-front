@@ -76,7 +76,7 @@ export default function CatalogSidebar({ products = [], current = {}, onTogglePa
         />
       </Accordion>
 
-      <Accordion label="Color" defaultOpen={colors.length > 0}>
+      <Accordion label="Color" defaultOpen>
         <ColorFilter
           colors={colors}
           selected={current.color}
@@ -84,7 +84,7 @@ export default function CatalogSidebar({ products = [], current = {}, onTogglePa
         />
       </Accordion>
 
-      <Accordion label="Talla" defaultOpen={sizes.length > 0}>
+      <Accordion label="Talla" defaultOpen>
         <SizeFilter
           sizes={sizes}
           selected={current.size}
@@ -92,7 +92,7 @@ export default function CatalogSidebar({ products = [], current = {}, onTogglePa
         />
       </Accordion>
 
-      <Accordion label="Precio">
+      <Accordion label="Precio" defaultOpen>
         <PriceFilter
           min={globalMin}
           max={globalMax}

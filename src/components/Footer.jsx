@@ -13,7 +13,7 @@ export default function Footer() {
           </p>
         </div>
         <div>
-          <h4>Shop</h4>
+          <h4>Tienda</h4>
           <Link to="/catalog">Catálogo</Link>
           <br />
           <Link to="/catalog?sort=new">Novedades</Link>
@@ -29,12 +29,12 @@ export default function Footer() {
           <Link to="/policies">Políticas</Link>
         </div>
         <div>
-          <h4>Newsletter</h4>
+          <h4>Boletín</h4>
           <p className="footer-about">Recibe novedades y descuentos.</p>
           <div className="newsletter">
             <input type="email" placeholder="Tu correo" aria-label="Correo para newsletter" />
             <button type="button" aria-label="Suscribirse">
-              OK →
+              Suscribirse →
             </button>
           </div>
         </div>

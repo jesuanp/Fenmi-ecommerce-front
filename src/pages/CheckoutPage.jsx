@@ -116,7 +116,7 @@ export default function CheckoutPage() {
   return (
     <div className="container" style={{ padding: '40px 56px 72px' }}>
       <h1 className="page-title" style={{ marginBottom: 8 }}>
-        Checkout
+        Finalizar compra
       </h1>
       <CheckoutSteps current={step} steps={STEPS} />
 

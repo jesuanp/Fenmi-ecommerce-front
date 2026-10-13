@@ -4,7 +4,7 @@ import useAuth from '@/stores/auth';
 import Toast from '@/components/Toast';
 
 const NAV = [
-  { to: '/admin', icon: '▦', label: 'Dashboard', end: true },
+  { to: '/admin', icon: '▦', label: 'Panel', end: true },
   { to: '/admin/products', icon: '▤', label: 'Productos' },
   { to: '/admin/categories', icon: '☰', label: 'Categorías' },
   { to: '/admin/tags', icon: '#', label: 'Etiquetas' },

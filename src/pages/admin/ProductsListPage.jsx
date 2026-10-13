@@ -56,7 +56,7 @@ export default function AdminProductsPage() {
                 <td>{money(p.base_price)}</td>
                 <td><span className={'status-badge ' + (p.active ? 'active' : 'cancelled')}>{p.active ? 'Activo' : 'Inactivo'}</span></td>
                 <td>
-                  {p.featured && '★ '}{p.is_new && 'NEW '}{p.best_seller && '🔥'}
+                  {p.featured && '★ '}{p.is_new && 'NUEVO '}{p.best_seller && '🔥'}
                 </td>
                 <td>
                   <div className="admin-actions">

@@ -260,8 +260,9 @@
 }
 .cat-label {
   position: absolute;
-  left: 12px;
-  bottom: 12px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   background: rgba(17, 17, 17, 0.72);
   color: #fff;
   border-radius: 999px;
@@ -270,6 +271,8 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  text-align: center;
+  max-width: calc(100% - 32px);
 }
 
 /* Product grid */
@@ -1683,7 +1686,7 @@
 .ai-size-chart-atdvxcgqxeuoxy3vqdaigenblock279308auwqrd8 {
   max-width: 800px;
   margin: 64px auto 0;
-  padding: 0 56px;
+  padding: 0 16px;
   font-family: var(--font);
 }
 .ai-size-chart-eyebrow-atdvxcgqxeuoxy3vqdaigenblock279308auwqrd8 {
@@ -1711,11 +1714,12 @@
 .ai-size-chart-table-atdvxcgqxeuoxy3vqdaigenblock279308auwqrd8 {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   margin-bottom: 28px;
   border-radius: 14px;
   overflow: hidden;
   border: 1.5px solid var(--border);
-  font-size: 13px;
+  font-size: 12px;
 }
 .ai-size-chart-table-atdvxcgqxeuoxy3vqdaigenblock279308auwqrd8 th {
   background: var(--dark);
@@ -1731,10 +1735,11 @@
   text-align: left;
 }
 .ai-size-chart-table-atdvxcgqxeuoxy3vqdaigenblock279308auwqrd8 td {
-  padding: 12px 14px;
+  padding: 10px 6px;
   text-align: center;
   border-bottom: 1px solid var(--border);
   color: var(--dark);
+  word-break: break-word;
 }
 .ai-size-chart-table-atdvxcgqxeuoxy3vqdaigenblock279308auwqrd8 tr:nth-child(even) td {
   background: var(--bg);
@@ -1782,6 +1787,24 @@
 }
 .ai-size-chart-guide-list-atdvxcgqxeuoxy3vqdaigenblock279308auwqrd8 p {
   margin: 0;
+}
+
+/* ── TABLA DE TALLAS — responsive móvil ────────────── */
+@media (max-width: 600px) {
+  .ai-size-chart-table-atdvxcgqxeuoxy3vqdaigenblock279308auwqrd8 {
+    font-size: 11px;
+  }
+}
+
+/* ── BOTÓN WHATSAPP ─────────────────────────────────── */
+.wa-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.wa-icon {
+  flex-shrink: 0;
 }
 
 /* ── CATALOG LAYOUT ───────────────────────────────── */
@@ -1849,7 +1872,7 @@
   width: 100%;
   background: none;
   border: none;
-  padding: 0;
+  padding: 8px 0;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
