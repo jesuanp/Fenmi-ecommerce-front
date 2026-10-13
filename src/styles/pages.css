@@ -1848,6 +1848,8 @@
 }
 .wa-float-icon {
   display: block;
+  width: 32px;
+  height: 32px;
 }
 .wa-float-pulse {
   position: absolute;
