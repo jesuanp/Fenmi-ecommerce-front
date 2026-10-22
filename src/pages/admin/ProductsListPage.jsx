@@ -35,7 +35,7 @@ export default function AdminProductsPage() {
         <Link to="/admin/products/new" className="btn lime small">+ Nuevo producto</Link>
       </div>
       <div className="admin-toolbar">
-        <input type="text" placeholder="Buscar por nombre o SKU…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input type="text" placeholder="Buscar por nombre, color o talla…" value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="btn-sm" onClick={() => { setPage(1); load(); }}>Buscar</button>
       </div>
       <div className="admin-card">

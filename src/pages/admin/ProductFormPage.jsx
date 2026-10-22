@@ -9,7 +9,6 @@ const FIELD_LABELS = {
   categoryId: 'Categoría',
   basePrice: 'Precio',
   compareAtPrice: 'Precio anterior',
-  sku: 'SKU',
   shortDescription: 'Descripción corta',
   longDescription: 'Descripción larga',
   fabricType: 'Tipo de tela',
@@ -41,7 +40,7 @@ function describeError(err, fallback = 'Error al guardar') {
 }
 
 const EMPTY = {
-  name: '', categoryId: '', sku: '', shortDescription: '', longDescription: '',
+  name: '', categoryId: '', shortDescription: '', longDescription: '',
   fabricType: '', composition: '', careInstructions: '', shippingInfo: '', returnInfo: '',
   basePrice: '', compareAtPrice: '', featured: false, isNew: false, bestSeller: false,
   active: true
@@ -82,14 +81,14 @@ export default function ProductFormPage() {
       .getProduct(id)
       .then((p) => {
         setForm({
-          name: p.name, categoryId: p.category?.id || '', sku: p.sku || '',
+          name: p.name, categoryId: p.category?.id || '',
           shortDescription: p.shortDescription || '', longDescription: p.longDescription || '',
           fabricType: p.fabricType || '', composition: p.composition || '',
           careInstructions: p.careInstructions || '', shippingInfo: p.shippingInfo || '',
           returnInfo: p.returnInfo || '', basePrice: p.basePrice, compareAtPrice: p.compareAtPrice || '',
           featured: p.featured, isNew: p.isNew, bestSeller: p.bestSeller, active: p.active
         });
-        setVariants((p.variants || []).map((v) => ({ colorId: v.colorId, sizeId: v.sizeId, sku: v.sku || '', stock: v.stock, priceOverride: v.priceOverride || '', active: v.active })));
+        setVariants((p.variants || []).map((v) => ({ colorId: v.colorId, sizeId: v.sizeId, stock: v.stock, priceOverride: v.priceOverride || '', active: v.active })));
         setImages(p.images || []);
         setTagIds((p.terms || []).map((t) => t.id));
       })
@@ -106,7 +105,6 @@ export default function ProductFormPage() {
     const payload = {
       name: form.name,
       categoryId: Number(form.categoryId),
-      sku: form.sku || null,
       shortDescription: form.shortDescription || null,
       longDescription: form.longDescription || null,
       fabricType: form.fabricType || null,
@@ -123,7 +121,6 @@ export default function ProductFormPage() {
       variants: variants.map((v) => ({
         colorId: Number(v.colorId),
         sizeId: Number(v.sizeId),
-        sku: v.sku || null,
         stock: Number(v.stock) || 0,
         priceOverride: v.priceOverride === '' || v.priceOverride == null ? null : Number(v.priceOverride),
         active: v.active !== false
@@ -146,7 +143,7 @@ export default function ProductFormPage() {
     }
   };
 
-  const addVariantRow = () => setVariants((v) => [...v, { colorId: '', sizeId: '', sku: '', stock: 0, priceOverride: '', active: true }]);
+  const addVariantRow = () => setVariants((v) => [...v, { colorId: '', sizeId: '', stock: 0, priceOverride: '', active: true }]);
   const setVariant = (idx, k, val) => setVariants((vs) => vs.map((v, i) => (i === idx ? { ...v, [k]: val } : v)));
   const delVariant = (idx) => setVariants((vs) => vs.filter((_, i) => i !== idx));
 
@@ -186,7 +183,6 @@ export default function ProductFormPage() {
                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            <div className="afield"><label>SKU</label><input value={form.sku} onChange={(e) => set('sku', e.target.value)} /></div>
             <div className="afield"><label>Precio (COP) *</label><input type="number" value={form.basePrice} onChange={(e) => set('basePrice', e.target.value)} required /></div>
             <div className="afield"><label>Precio anterior (descuento)</label><input type="number" value={form.compareAtPrice} onChange={(e) => set('compareAtPrice', e.target.value)} /></div>
             <div className="afield full"><label>Descripción corta</label><input value={form.shortDescription} onChange={(e) => set('shortDescription', e.target.value)} /></div>
@@ -217,7 +213,6 @@ export default function ProductFormPage() {
                 <option value="">Talla…</option>
                 {sizes.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
-              <input placeholder="SKU" value={v.sku} onChange={(e) => setVariant(i, 'sku', e.target.value)} />
               <input type="number" min="0" placeholder="Existencias" value={v.stock} onChange={(e) => setVariant(i, 'stock', e.target.value)} />
               <input type="number" placeholder="Precio (opc.)" value={v.priceOverride} onChange={(e) => setVariant(i, 'priceOverride', e.target.value)} />
               <button type="button" className="btn-sm danger" onClick={() => delVariant(i)}>✕</button>

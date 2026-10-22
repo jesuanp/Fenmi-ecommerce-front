@@ -36,14 +36,13 @@ export default function AdminInventoryPage() {
       </div>
       <div className="admin-card">
         <table className="admin-table">
-            <thead><tr><th>Producto</th><th>Color</th><th>Talla</th><th>SKU</th><th>Existencias</th><th></th></tr></thead>
+            <thead><tr><th>Producto</th><th>Color</th><th>Talla</th><th>Existencias</th><th></th></tr></thead>
           <tbody>
             {data?.data?.map((v) => (
               <tr key={v.id}>
                 <td><strong>{v.product?.name}</strong></td>
                 <td>{v.color?.name}</td>
                 <td>{v.size?.label}</td>
-                <td style={{ color: 'var(--light)', fontSize: 11 }}>{v.sku}</td>
                 <td>
                   <span className={'status-badge ' + (v.stock === 0 ? 'blocked' : v.stock <= 5 ? 'pending' : 'active')}>{v.stock}</span>
                 </td>
