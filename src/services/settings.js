@@ -1,8 +1,28 @@
 import client from './api';
 
+const TTL = 60_000;
+let cache = null;
+let inFlight = null;
+
+// Devuelve la config pública de la tienda con cache en memoria para
+// evitar refetch en cada componente que la usa (home, checkout, cart, etc.).
 const settingsApi = {
   async get() {
-    return (await client.get('/settings/public')).data.data;
+    if (cache && Date.now() - cache.at < TTL) return cache.data;
+    if (inFlight) return inFlight;
+    inFlight = client
+      .get('/settings/public')
+      .then((r) => {
+        cache = { data: r.data.data, at: Date.now() };
+        return cache.data;
+      })
+      .finally(() => {
+        inFlight = null;
+      });
+    return inFlight;
+  },
+  invalidate() {
+    cache = null;
   }
 };
 

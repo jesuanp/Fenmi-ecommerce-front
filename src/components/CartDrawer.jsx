@@ -4,6 +4,7 @@ import useCart from '@/stores/cart';
 import useUI from '@/stores/ui';
 import { money } from '@/services/settings';
 import CouponInput from '@/components/CouponInput';
+import FreeShippingNotice from '@/components/FreeShippingNotice';
 
 export default function CartDrawer() {
   const cart = useCart();
@@ -62,6 +63,7 @@ export default function CartDrawer() {
         )}
         {cart.items.length > 0 && (
           <div className="cart-foot">
+            <FreeShippingNotice />
             <CouponInput />
             <div className="cart-total">
               <span>Subtotal</span>

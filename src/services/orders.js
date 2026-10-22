@@ -15,5 +15,8 @@ export const orderApi = {
   },
   async cancel(id) {
     return (await client.post(`/orders/${id}/cancel`)).data.data;
+  },
+  async abandon(id) {
+    return (await client.post(`/orders/${id}/abandon`)).data.data;
   }
 };

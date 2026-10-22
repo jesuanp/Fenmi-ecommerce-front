@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const client = axios.create({
-  baseURL: 'https://proyectovps.duckdns.org/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 15000,
   withCredentials: true
 });
@@ -24,11 +24,32 @@ client.interceptors.request.use((config) => {
 
 let refreshPromise = null;
 
+// Endpoints donde un 401 NO debe disparar refresh: login, registro, recuperación
+// de contraseña, etc. En esos casos el propio endpoint es el que falla y debe
+// propagar el error directo al caller.
+const AUTH_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/refresh',
+  '/auth/logout',
+  '/auth/google',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/verify-email',
+  '/auth/resend-verification',
+  '/account/change-password'
+];
+const isAuthEndpoint = (url = '') => AUTH_PATHS.some((p) => url.includes(p));
+
 client.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
-    if (error.response?.status === 401 && !original?._retried) {
+    if (
+      error.response?.status === 401 &&
+      !original?._retried &&
+      !isAuthEndpoint(original?.url)
+    ) {
       original._retried = true;
       if (!refreshPromise) {
         refreshPromise = client

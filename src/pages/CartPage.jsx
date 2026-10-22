@@ -2,10 +2,13 @@
 import { Link } from 'react-router-dom';
 import useCart from '@/stores/cart';
 import { money } from '@/services/settings';
+import useShippingSettings from '@/hooks/useShippingSettings';
+import FreeShippingNotice from '@/components/FreeShippingNotice';
 import CouponInput from '@/components/CouponInput';
 
 export default function CartPage() {
   const cart = useCart();
+  const umbral = useShippingSettings();
 
   if (cart.items.length === 0) {
     return (
@@ -49,6 +52,7 @@ export default function CartPage() {
         </div>
         <div className="cart-summary">
           <h3>Resumen</h3>
+          <FreeShippingNotice />
           <CouponInput />
           <div className="summary-row">
             <span>Subtotal</span>
@@ -62,7 +66,7 @@ export default function CartPage() {
           )}
           <div className="summary-row muted">
             <span>Envío</span>
-            <span>Gratis desde $300.000</span>
+            <span>{umbral > 0 ? `Gratis desde ${money(umbral)}` : 'Se calcula al confirmar'}</span>
           </div>
           <div className="summary-total">
             <span>Total</span>

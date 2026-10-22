@@ -4,6 +4,42 @@ import { adminApi } from '@/services/admin';
 import client from '@/services/api';
 import useUI from '@/stores/ui';
 
+const FIELD_LABELS = {
+  name: 'Nombre',
+  categoryId: 'Categoría',
+  basePrice: 'Precio',
+  compareAtPrice: 'Precio anterior',
+  sku: 'SKU',
+  shortDescription: 'Descripción corta',
+  longDescription: 'Descripción larga',
+  fabricType: 'Tipo de tela',
+  composition: 'Composición',
+  careInstructions: 'Cuidado',
+  shippingInfo: 'Envíos',
+  returnInfo: 'Devoluciones',
+  colorId: 'Color',
+  sizeId: 'Talla',
+  stock: 'Existencias',
+  priceOverride: 'Precio de variante',
+  tagIds: 'Etiquetas'
+};
+
+function describeError(err, fallback = 'Error al guardar') {
+  const e = err?.response?.data?.error;
+  if (!err) return fallback;
+  if (!e) return err.message || fallback;
+  const raw = Array.isArray(e.details) ? e.details : [];
+  if (!raw.length) return e.message || fallback;
+  const lineas = raw.map((d) => {
+    const p = Array.isArray(d.path) ? d.path.join('.') : (d.field || d.path || '');
+    const [root, idx] = String(p).split('.');
+    const etiqueta = FIELD_LABELS[root] || root;
+    return idx !== undefined ? `${etiqueta} (variante ${Number(idx) + 1})` : etiqueta;
+  });
+  const unicas = [...new Set(lineas)];
+  return `${e.message} → ${unicas.join(', ')}`;
+}
+
 const EMPTY = {
   name: '', categoryId: '', sku: '', shortDescription: '', longDescription: '',
   fabricType: '', composition: '', careInstructions: '', shippingInfo: '', returnInfo: '',
@@ -41,8 +77,10 @@ export default function ProductFormPage() {
   }, []);
 
   useEffect(() => {
-    if (editing) {
-      adminApi.getProduct(id).then((p) => {
+    if (!editing) return;
+    adminApi
+      .getProduct(id)
+      .then((p) => {
         setForm({
           name: p.name, categoryId: p.category?.id || '', sku: p.sku || '',
           shortDescription: p.shortDescription || '', longDescription: p.longDescription || '',
@@ -51,16 +89,20 @@ export default function ProductFormPage() {
           returnInfo: p.returnInfo || '', basePrice: p.basePrice, compareAtPrice: p.compareAtPrice || '',
           featured: p.featured, isNew: p.isNew, bestSeller: p.bestSeller, active: p.active
         });
-        setVariants(p.variants.map((v) => ({ colorId: v.colorId, sizeId: v.sizeId, sku: v.sku || '', stock: v.stock, priceOverride: v.priceOverride || '', active: v.active })));
+        setVariants((p.variants || []).map((v) => ({ colorId: v.colorId, sizeId: v.sizeId, sku: v.sku || '', stock: v.stock, priceOverride: v.priceOverride || '', active: v.active })));
         setImages(p.images || []);
-        setTagIds(p.terms.map((t) => t.id));
-        setLoading(false);
-      });
-    }
+        setTagIds((p.terms || []).map((t) => t.id));
+      })
+      .catch((err) => ui.showToast(describeError(err, 'No se pudo cargar el producto')))
+      .finally(() => setLoading(false));
   }, [editing]);
 
   const save = async (e) => {
     e.preventDefault();
+    const incompletas = variants.filter((v) => !v.colorId || !v.sizeId).length;
+    if (incompletas > 0) {
+      return ui.showToast(`Hay ${incompletas} variante(s) sin color o talla. Complétalas o elimínalas antes de guardar.`);
+    }
     const payload = {
       name: form.name,
       categoryId: Number(form.categoryId),
@@ -78,7 +120,14 @@ export default function ProductFormPage() {
       isNew: !!form.isNew,
       bestSeller: !!form.bestSeller,
       active: form.active !== false,
-      variants: variants.map((v) => ({ ...v, stock: Number(v.stock) || 0 })),
+      variants: variants.map((v) => ({
+        colorId: Number(v.colorId),
+        sizeId: Number(v.sizeId),
+        sku: v.sku || null,
+        stock: Number(v.stock) || 0,
+        priceOverride: v.priceOverride === '' || v.priceOverride == null ? null : Number(v.priceOverride),
+        active: v.active !== false
+      })),
       tagIds
     };
     try {
@@ -93,7 +142,7 @@ export default function ProductFormPage() {
       }
       nav('/admin/products');
     } catch (err) {
-      ui.showToast(err.response?.data?.error?.message || 'Error al guardar');
+      ui.showToast(describeError(err));
     }
   };
 

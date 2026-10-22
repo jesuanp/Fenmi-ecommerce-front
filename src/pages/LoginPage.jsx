@@ -26,11 +26,12 @@ export default function LoginPage() {
       nav(user?.role === 'ADMIN' ? '/admin' : '/', { replace: true });
     } catch (err) {
       const code = err.response?.data?.error?.code;
-      if (code === 'EMAIL_NOT_VERIFIED') {
-        setError('Debes verificar tu correo antes de iniciar sesión.');
-      } else {
-        setError(err.response?.data?.error?.message || 'Correo o contraseña incorrectos.');
-      }
+      const message =
+        code === 'EMAIL_NOT_VERIFIED'
+          ? 'Debes verificar tu correo antes de iniciar sesión.'
+          : err.response?.data?.error?.message || 'Correo o contraseña incorrectos.';
+      setError(message);
+      ui.showToast(message);
     } finally {
       setLoading(false);
     }

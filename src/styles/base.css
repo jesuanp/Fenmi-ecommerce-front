@@ -106,3 +106,55 @@
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* Aviso de envío gratis (FreeShippingNotice) */
+.fsn {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--mid);
+}
+.fsn-msg {
+  color: var(--dark);
+}
+.fsn-msg strong {
+  color: var(--teal);
+}
+.fsn-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.fsn-fill {
+  height: 100%;
+  width: 0;
+  background: var(--teal);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+.fsn-meta {
+  font-size: 11px;
+  color: var(--light);
+  text-align: right;
+}
+.fsn.fsn-done {
+  background: var(--lime-light);
+  border-color: var(--lime);
+}
+.fsn.fsn-done .fsn-msg {
+  color: var(--teal-dark);
+  font-weight: 600;
+}
+.fsn.fsn-done .fsn-msg strong {
+  color: var(--teal-dark);
+}
+.fsn.fsn-done .fsn-fill {
+  background: var(--lime);
+}

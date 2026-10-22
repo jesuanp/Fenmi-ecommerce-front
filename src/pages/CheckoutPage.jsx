@@ -4,10 +4,36 @@ import useCart from '@/stores/cart';
 import useUI from '@/stores/ui';
 import settingsApi from '@/services/settings';
 import { orderApi } from '@/services/orders';
+import { paymentApi } from '@/services/payments';
+import { addressApi } from '@/services/addresses';
 import { money } from '@/services/settings';
 import useAuth from '@/stores/auth';
 
 const STEPS = ['Información', 'Envío', 'Método', 'Resumen'];
+
+const WDEBUG = import.meta.env.DEV;
+const wlog = (...a) => { if (WDEBUG) console.log('[wompi:fe]', ...a); };
+const werr = (...a) => { if (WDEBUG) console.error('[wompi:fe]', ...a); };
+
+// Diagnóstico del entorno de Wompi en el navegador.
+function wompiEnvReport() {
+  if (!WDEBUG) return;
+  const script = document.querySelector('script[src*="checkout.wompi.co"]');
+  console.log('[wompi:fe] === DIAGNÓSTICO ENTORNO WOMPI ===', {
+    'script widget.js presente en DOM': script ? script.src : false,
+    'typeof window.WidgetCheckout': typeof window.WidgetCheckout,
+    'typeof window.WompiCheckout': typeof window.WompiCheckout,
+    'typeof window.WompiButton': typeof window.WompiButton,
+    'globals relacionados': Object.keys(window).filter((k) => /wompi|checkout/i.test(k))
+  });
+}
+
+const WOMPI_METHODS = [
+  { value: 'CARD', label: 'Tarjeta de crédito/débito', icon: '💳' },
+  { value: 'PSE', label: 'PSE (transferencia bancaria)', icon: '🏦' },
+  { value: 'NEQUI', label: 'Nequi', icon: '💜' },
+  { value: 'BANCOLOMBIA_TRANSFER', label: 'Transferencia Bancolombia', icon: '🟡' }
+];
 
 export default function CheckoutPage() {
   const cart = useCart();
@@ -21,23 +47,64 @@ export default function CheckoutPage() {
 
   // Inicial: si carrito vacío → redirect.
   useEffect(() => {
+    wompiEnvReport();
     if (cart.hydrated && cart.items.length === 0) {
       navigate('/cart', { replace: true });
     }
   }, [cart.hydrated, cart.items.length]);
 
-  // Cargar métodos de envío desde settings.
+  const [paymentConfig, setPaymentConfig] = useState(null);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+
+  // Cargar config de tienda (envío) y de pago (Wompi) por separado.
   useEffect(() => {
     settingsApi
       .get()
       .then((s) => setShippingMethods(s.shipping?.methods || []))
       .catch(() => {
         ui.showToast('No se pudieron cargar los métodos de envío');
-        // Método por defecto para no bloquear el flujo.
         setShippingMethods([{ id: 'nacional', name: 'Envío nacional', description: '2 a 3 días hábiles', cost: 12000 }]);
+      });
+
+    // /payments/config trae publicKey + enlaces a los contratos que Wompi
+    // exige aceptar (Habeas Data).
+    paymentApi
+      .getConfig()
+      .then((c) => {
+        wlog('config desde /api/payments/config →', c);
+        setPaymentConfig(c);
+      })
+      .catch((e) => {
+        werr('falló /api/payments/config →', e.response?.status, e.response?.data);
+        setPaymentConfig({ provider: 'manual' });
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Dirección guardada del usuario (para no volver a escribirla).
+  const [savedAddress, setSavedAddress] = useState(null);
+  const [usingSaved, setUsingSaved] = useState(false);
+
+  // Cargar la última dirección guardada si hay sesión.
+  useEffect(() => {
+    let vivo = true;
+    if (!auth.user?.id) return undefined;
+    addressApi
+      .list()
+      .then((rows) => {
+        if (!vivo || !Array.isArray(rows) || rows.length === 0) return;
+        setSavedAddress(rows[0]);
+        setUsingSaved(true);
+        wlog('dirección guardada cargada →', rows[0]);
+      })
+      .catch(() => {
+        /* invitado o sin direcciones: seguimos con el formulario vacío */
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [auth.user?.id]);
 
   const defaults = auth.user || {};
 
@@ -45,7 +112,7 @@ export default function CheckoutPage() {
     firstName: defaults.firstName || '',
     lastName: defaults.lastName || '',
     email: defaults.email || '',
-    phone: '',
+    phone: defaults.phone || '',
     recipient: '',
     line1: '',
     line2: '',
@@ -54,10 +121,49 @@ export default function CheckoutPage() {
     postal_code: '',
     country: 'CO',
     instructions: '',
-    methodId: ''
+    methodId: '',
+    paymentMethod: ''
   });
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Aplicar la dirección guardada a los campos de envío.
+  useEffect(() => {
+    if (!usingSaved || !savedAddress) return;
+    setForm((f) => ({
+      ...f,
+      recipient: savedAddress.recipient || f.recipient,
+      phone: savedAddress.phone || f.phone,
+      line1: savedAddress.line1 || f.line1,
+      line2: savedAddress.line2 || f.line2,
+      city: savedAddress.city || f.city,
+      state: savedAddress.state || f.state,
+      postal_code: savedAddress.postal_code || f.postal_code,
+      instructions: savedAddress.instructions || f.instructions
+    }));
+  }, [usingSaved, savedAddress]);
+
+  const discardSavedAddress = () => {
+    setUsingSaved(false);
+    setForm((f) => ({
+      ...f,
+      recipient: '',
+      line1: '',
+      line2: '',
+      city: '',
+      state: '',
+      postal_code: '',
+      instructions: ''
+    }));
+  };
+
+  const wompiMode = paymentConfig?.provider === 'wompi';
+  const wompiMethods = Array.isArray(paymentConfig?.methods) && paymentConfig.methods.length
+    ? paymentConfig.methods
+    : WOMPI_METHODS.map((m) => m.value);
+  const methodLabel = (v) => WOMPI_METHODS.find((m) => m.value === v) || { label: v, icon: '•' };
+  const contractsAccepted = !wompiMode || (acceptTerms && acceptPrivacy);
+  const wompiReady = !wompiMode || (!!methodLabel(form.paymentMethod).label && form.paymentMethod) && contractsAccepted;
 
   // Recalcular quote cuando cambia método o subtotal.
   useEffect(() => {
@@ -74,6 +180,7 @@ export default function CheckoutPage() {
 
   const submitOrder = async () => {
     setSubmitting(true);
+    let createdOrderId = null;
     try {
       const order = await orderApi.create({
         customer: {
@@ -95,16 +202,61 @@ export default function CheckoutPage() {
         },
         methodId: form.methodId
       });
+      createdOrderId = order.id;
+
+      // Wompi: la transacción ya se creó en el backend; redirigimos al
+      // checkout alojado por Wompi, que devuelve al cliente a /checkout/success.
+      if (wompiMode) {
+        wlog('llamando POST /payments/create con método', form.paymentMethod);
+        const pay = await paymentApi.create(order.id, form.paymentMethod);
+        wlog('respuesta de /payments/create →', pay);
+
+        wompiEnvReport();
+
+        if (!pay?.redirectUrl) {
+          werr('el backend NO devolvió redirectUrl', { pay });
+          throw new Error('Wompi no devolvió una URL de pago.');
+        }
+        wlog('redirigiendo a', pay.redirectUrl);
+        window.location.href = pay.redirectUrl;
+        return;
+      }
 
       // Pago manual: el pedido queda PENDING_PAYMENT y el cliente sube
       // la captura del comprobante (Nequi / Bancolombia) en la página de éxito.
       ui.showToast('Pedido creado');
       await cart.hydrate();
       navigate(`/checkout/success/${order.orderNumber}`, {
-        state: { orderId: order.id }
+        state: { orderId: order.id, provider: 'manual' }
       });
     } catch (err) {
-      ui.showToast('Hubo un problema al crear el pedido');
+      // Si el pedido se creó pero el pago falló, lo abandonamos para que el
+      // carrito del cliente vuelva a tener sus artículos y pueda reintentar.
+      if (createdOrderId) {
+        try {
+          await orderApi.abandon(createdOrderId);
+          await cart.hydrate();
+        } catch {
+          /* noop: si no se puede revertir, al menos avisamos */
+        }
+      }
+
+      werr('ERROR COMPLETO en submitOrder →', {
+        message: err.message,
+        status: err.response?.status,
+        code: err.response?.data?.error?.code,
+        messageApi: err.response?.data?.error?.message,
+        details: err.response?.data?.error?.details,
+        body: err.response?.data,
+        configUrl: err.config?.url
+      });
+
+      const e = err.response?.data?.error || {};
+      const details = Array.isArray(e.details) ? e.details : [];
+      const list = details
+        .map((d) => `${(d.path || d.field || []).join('.')}: ${d.message}`)
+        .join(' · ');
+      ui.showToast(list || e.message || 'Error al crear el pedido');
       if (err.response?.data?.error?.code === 'INSUFFICIENT_STOCK') {
         await cart.hydrate();
       }
@@ -136,6 +288,34 @@ export default function CheckoutPage() {
           {step === 1 && (
             <div className="checkout-step">
               <h2>Dirección de envío</h2>
+
+              {usingSaved && savedAddress && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    background: 'var(--lime-light)',
+                    border: '1px solid var(--lime)',
+                    borderRadius: 10,
+                    padding: '10px 14px',
+                    marginBottom: 14,
+                    fontSize: 13
+                  }}
+                >
+                  <span>Usamos tu última dirección guardada.</span>
+                  <button
+                    type="button"
+                    className="text-link"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13 }}
+                    onClick={discardSavedAddress}
+                  >
+                    Usar otra
+                  </button>
+                </div>
+              )}
+
               <Field label="Destinatario" value={form.recipient} onChange={(v) => set('recipient', v)} />
               <Field label="Dirección" value={form.line1} onChange={(v) => set('line1', v)} />
               <Field label="Apartamento (opcional)" value={form.line2} onChange={(v) => set('line2', v)} />
@@ -180,9 +360,111 @@ export default function CheckoutPage() {
           {step === 3 && (
             <div className="checkout-step">
               <h2>Confirmar pedido</h2>
-              <p style={{ color: 'var(--mid)', fontSize: 13 }}>
-                Al confirmar crearás tu pedido. El pago se procesa en el siguiente paso.
-              </p>
+              {wompiMode ? (
+                <>
+                  <p style={{ color: 'var(--mid)', fontSize: 13, marginBottom: 14 }}>
+                    Elige cómo vas a pagar con Wompi. Te redirigiremos a su plataforma segura.
+                  </p>
+                  {wompiMethods.map((v) => {
+                    const m = methodLabel(v);
+                    return (
+                      <label
+                        key={v}
+                        className="ship-option"
+                        style={{ marginBottom: 8 }}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value={v}
+                          checked={form.paymentMethod === v}
+                          onChange={() => set('paymentMethod', v)}
+                        />
+                        <div>
+                          <strong>
+                            <span style={{ marginRight: 8 }}>{m.icon}</span>
+                            {m.label}
+                          </strong>
+                        </div>
+                      </label>
+                    );
+                  })}
+                  {paymentConfig?.sandbox && (
+                    <p
+                      style={{
+                        background: 'var(--lime-light)',
+                        color: 'var(--teal-dark)',
+                        padding: '8px 14px',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        marginTop: 10
+                      }}
+                    >
+                      Modo sandbox — usa las tarjetas de prueba de Wompi
+                    </p>
+                  )}
+
+                  {/* Wompi exige aceptación explícita de los contratos
+                      (Ley 1581 de Habeas Data). Sin ambas casillas no se puede pagar. */}
+                  <div
+                    style={{
+                      marginTop: 18,
+                      padding: 14,
+                      border: '1px solid var(--border)',
+                      borderRadius: 10,
+                      display: 'grid',
+                      gap: 10
+                    }}
+                  >
+                    <p style={{ fontSize: 12, color: 'var(--mid)', margin: 0 }}>
+                      Wompi requiere tu aceptación explícita de sus contratos para procesar el pago.
+                    </p>
+                    <label className="check-row" style={{ alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={acceptTerms}
+                        onChange={(e) => setAcceptTerms(e.target.checked)}
+                      />
+                      <span style={{ fontSize: 13 }}>
+                        He leído y acepto los{' '}
+                        <a
+                          href={paymentConfig?.termsUrl || 'https://wompi.com/assets/downloadble/reglamento-Usuarios-Colombia.pdf'}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: 'var(--teal)', textDecoration: 'underline' }}
+                        >
+                          términos y condiciones de Wompi
+                        </a>
+                        .
+                      </span>
+                    </label>
+                    <label className="check-row" style={{ alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={acceptPrivacy}
+                        onChange={(e) => setAcceptPrivacy(e.target.checked)}
+                      />
+                      <span style={{ fontSize: 13 }}>
+                        He leído y acepto la{' '}
+                        <a
+                          href={paymentConfig?.privacyUrl || 'https://wompi.com/assets/downloadble/autorizacion-tratamiento-datos-personales.pdf'}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: 'var(--teal)', textDecoration: 'underline' }}
+                        >
+                          autorización de tratamiento de datos personales
+                        </a>
+                        .
+                      </span>
+                    </label>
+                  </div>
+                </>
+              ) : (
+                <p style={{ color: 'var(--mid)', fontSize: 13 }}>
+                  Al confirmar crearás tu pedido. El pago se procesa en el siguiente paso.
+                </p>
+              )}
             </div>
           )}
 
@@ -207,10 +489,14 @@ export default function CheckoutPage() {
             ) : (
               <button
                 className="btn lime block"
-                disabled={submitting}
+                disabled={submitting || (wompiMode && !wompiReady)}
                 onClick={submitOrder}
               >
-                {submitting ? 'Creando pedido…' : 'Realizar pedido'}
+                {submitting
+                  ? 'Creando pedido…'
+                  : wompiMode
+                  ? 'Pagar con Wompi'
+                  : 'Realizar pedido'}
               </button>
             )}
           </div>

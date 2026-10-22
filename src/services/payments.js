@@ -3,6 +3,9 @@ import client from './api';
 // El frontend NUNCA marca el pago como aprobado: solo inicia el pago
 // y el backend lo confirma vía webhook del proveedor o vía aprobación admin.
 export const paymentApi = {
+  async getConfig() {
+    return (await client.get('/payments/config')).data.data;
+  },
   async create(orderId, method) {
     return (await client.post('/payments/create', { orderId, method })).data.data;
   },
