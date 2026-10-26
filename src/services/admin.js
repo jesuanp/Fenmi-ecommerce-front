@@ -46,9 +46,15 @@ export const adminApi = {
   // Pedidos
   listOrders: (p) => client.get('/admin/orders', { params: p }).then((r) => r.data.data),
   getOrder: (id) => client.get(`/admin/orders/${id}`).then((r) => r.data.data),
-  changeOrderStatus: (id, toStatus, note) => client.patch(`/admin/orders/${id}/status`, { toStatus, note }).then((r) => r.data.data),
+  changeOrderStatus: (id, toStatus, note, shipment) => client.patch(`/admin/orders/${id}/status`, { toStatus, note, shipment }).then((r) => r.data.data),
+  updateOrderShipment: (id, shipment) => client.patch(`/admin/orders/${id}/shipping`, shipment).then((r) => r.data.data),
   approveOrderPayment: (paymentId) => client.post(`/admin/orders/${paymentId}/approve-payment`).then((r) => r.data.data),
   rejectOrderPayment: (paymentId, reason) => client.post(`/admin/orders/${paymentId}/reject-payment`, { reason }).then((r) => r.data.data),
+  // Consulta el estado real en Wompi y confirma si quedó APPROVED.
+  syncOrderPayment: (orderId) => client.post(`/admin/orders/${orderId}/sync-payment`).then((r) => r.data.data),
+
+  listRefunds: (p) => client.get('/admin/refunds', { params: p }).then((r) => r.data.data),
+  confirmManualRefund: (id, reference) => client.post(`/admin/refunds/${id}/confirm-manual`, { reference }).then((r) => r.data.data),
 
   // Usuarios
   listUsers: (p) => client.get('/admin/users', { params: p }).then((r) => r.data.data),
@@ -76,7 +82,7 @@ export const adminApi = {
 
   // Devoluciones (admin)
   listReturns: (p) => client.get('/admin/returns', { params: p }).then((r) => r.data.data),
-  approveReturn: (id, adminNote) => client.post(`/admin/returns/${id}/approve`, { adminNote }).then((r) => r.data.data),
+  approveReturn: (id, adminNote, restock = false) => client.post(`/admin/returns/${id}/approve`, { adminNote, restock }).then((r) => r.data.data),
   rejectReturn: (id, adminNote) => client.post(`/admin/returns/${id}/reject`, { adminNote }).then((r) => r.data.data),
 
   // Auditoría

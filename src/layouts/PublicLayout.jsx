@@ -25,7 +25,11 @@ export default function PublicLayout() {
   // Cuando la sesión pasa a autenticada (login/registro/refresh), combinar carrito invitado.
   useEffect(() => {
     if (auth.status === 'authenticated') {
-      cart.merge();
+      // merge() propaga el error para que el llamador pueda reaccionar, así que
+      // hay que capturarlo aquí: sin esto queda una promesa rechazada suelta.
+      cart.merge().catch(() => {
+        /* el carrito se recargó con lo que el servidor realmente tiene */
+      });
       wishlist.load();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

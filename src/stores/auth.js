@@ -36,11 +36,18 @@ const useAuth = create((set, get) => ({
     set({ user, status: user ? 'authenticated' : 'guest', checked: true });
   },
 
-  // Llama tras login/registro: combina carrito invitado con el del usuario.
+// Tras login/registro.
+  //
+  // OJO: aquí NO se vuelve a pedir el merge del carrito. setUser() cambia
+  // auth.status, y PublicLayout ya dispara cart.merge() al reaccionar a ese
+  // cambio. Hacerlo en los dos sitios lanzaba dos merges simultáneos por inicio
+  // de sesión, que es justo la condición que duplicaba carritos en la base.
   async afterLogin() {
     const { default: useCart } = await import('@/stores/cart');
+    // hydrate() espera al merge en vuelo y descarta la respuesta perdedora, así
+    // que recargar aquí es seguro y deja la UI al día de una vez.
     try {
-      await useCart.getState().merge();
+      await useCart.getState().hydrate();
     } catch {
       /* noop */
     }

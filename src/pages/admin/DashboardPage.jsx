@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminApi } from '@/services/admin';
 import { money } from '@/services/settings';
+import { orderStatusLabel } from '@/utils/orderDisplay';
 
 function BarChart({ rows, format }) {
   if (!rows || rows.length === 0) return <p style={{ color: 'var(--light)', fontSize: 12 }}>Sin datos</p>;
@@ -43,13 +44,13 @@ export default function AdminDashboard() {
 
       <div className="stats-grid">
         <div className="stat-card"><div className="stat-label">Ventas totales</div><div className="stat-value">{money(s.totalSales)}</div></div>
-        <div className="stat-card"><div className="stat-label">Pedidos</div><div className="stat-value">{s.totalOrders}</div></div>
+        <div className="stat-card"><div className="stat-label">Pedidos creados</div><div className="stat-value">{s.totalOrders}</div></div>
         <div className="stat-card"><div className="stat-label">Pedidos pendientes</div><div className="stat-value">{s.pendingOrders}</div></div>
-        <div className="stat-card"><div className="stat-label">Productos vendidos</div><div className="stat-value">{s.productsSold}</div></div>
+        <div className="stat-card"><div className="stat-label">Unidades vendidas</div><div className="stat-value">{s.productsSold}</div></div>
         <div className="stat-card"><div className="stat-label">Clientes</div><div className="stat-value">{s.customers}</div></div>
         <div className="stat-card"><div className="stat-label">Poco stock</div><div className="stat-value">{s.lowStock}</div></div>
         <div className="stat-card"><div className="stat-label">Agotados</div><div className="stat-value">{s.outOfStock}</div></div>
-        <div className="stat-card"><div className="stat-label">Total</div><div className="stat-value">{s.totalOrders + s.pendingOrders}</div></div>
+        <div className="stat-card"><div className="stat-label">Pedidos pagados</div><div className="stat-value">{s.paidOrders}</div></div>
       </div>
 
       <div className="charts-grid">
@@ -91,7 +92,7 @@ export default function AdminDashboard() {
               {data.recentOrders.map((o) => (
                 <tr key={o.id}>
                   <td><Link to={`/admin/orders/${o.id}`}>{o.orderNumber}</Link></td>
-                  <td><span className={'status-badge ' + o.status.toLowerCase()}>{o.status}</span></td>
+                  <td><span className={'status-badge ' + o.status.toLowerCase()}>{orderStatusLabel(o.status)}</span></td>
                   <td>{money(o.grandTotal)}</td>
                   <td>{new Date(o.createdAt).toLocaleDateString('es-CO')}</td>
                   <td><Link className="btn-sm" to={`/admin/orders/${o.id}`}>Ver</Link></td>

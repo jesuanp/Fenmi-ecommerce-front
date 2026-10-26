@@ -1,45 +1,52 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import useAuth from '@/stores/auth';
-import useUI from '@/stores/ui';
+import { paymentApi, readPendingPayment, clearPendingPayment } from '@/services/payments';
+import useCart from '@/stores/cart';
 import { orderApi } from '@/services/orders';
 import { returnsApi } from '@/services/returns';
 import { money } from '@/services/settings';
-
-const STATUS_LABELS = {
-  PENDING_PAYMENT: 'Pendiente de pago',
-  PAID: 'Pagado',
-  PROCESSING: 'Preparando pedido',
-  SHIPPED: 'Enviado',
-  DELIVERED: 'Entregado',
-  CANCELLED: 'Cancelado',
-  REFUNDED: 'Reembolsado'
-};
+import { ORDER_STATUS_LABELS } from '@/utils/orderDisplay';
 
 const RETURN_STATUS_LABELS = {
   PENDING: 'En revisión',
-  APPROVED: 'Aprobada',
+  PROCESSING: 'Reembolso solicitado',
+  APPROVED: 'Reembolso confirmado',
   REJECTED: 'Rechazada'
 };
 
-const STATUSES = ['', 'PENDING_PAYMENT', 'PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'];
+const STATUSES = ['', 'PAID', 'PAID_STOCK_ISSUE', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUND_PENDING', 'REFUNDED'];
 
 export default function AccountOrdersPage() {
   const auth = useAuth();
-  const ui = useUI();
+  const cart = useCart();
   const nav = useNavigate();
   const [status, setStatus] = useState('');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [returns, setReturns] = useState([]);
 
-  const load = () => {
+  const load = async () => {
     setLoading(true);
-    orderApi
-      .list(status ? { status } : {})
-      .then((d) => setData(d))
-      .catch(() => setData({ data: [], pagination: { total: 0 } }))
-      .finally(() => setLoading(false));
+    try {
+      const pending = readPendingPayment();
+      if (pending?.provider === 'wompi' && pending?.orderNumber) {
+        try {
+          const result = await paymentApi.verify('wompi', pending.orderNumber);
+          if (result?.confirmed) {
+            clearPendingPayment();
+            await cart.hydrate();
+          }
+        } catch {
+          // No asumir aprobación si la verificación no responde.
+        }
+      }
+      setData(await orderApi.list(status ? { status } : {}));
+    } catch {
+      setData({ data: [], pagination: { total: 0 } });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadReturns = () => {
@@ -69,27 +76,14 @@ export default function AccountOrdersPage() {
     }
   }, [auth.status, auth.checked]);
 
-  const cancelOrder = async (id) => {
-    if (!window.confirm('¿Seguro que quieres cancelar este pedido?')) return;
-    try {
-      const updated = await orderApi.cancel(id);
-      ui.showToast('Pedido cancelado');
-      setData((d) => ({
-        ...d,
-        data: d.data.map((o) => (o.id === updated.id ? updated : o))
-      }));
-    } catch {
-      ui.showToast('No se pudo cancelar el pedido');
-    }
-  };
-
   return (
-    <div className="container" style={{ padding: '56px 56px 72px', maxWidth: 980 }}>
+    <div className="container" style={{ padding: 'clamp(24px, 5vw, 56px) clamp(16px, 5vw, 56px) 72px', maxWidth: 980 }}>
       <div className="account-head">
         <div>
           <h1 className="page-title">Mis pedidos</h1>
           <p style={{ color: 'var(--mid)', fontSize: 13 }}>
             {auth.user?.firstName} {auth.user?.lastName} · {auth.user?.email}
+            <span style={{ display: 'block', marginTop: 5 }}>Aquí aparecen únicamente las compras con pago confirmado.</span>
           </p>
         </div>
         {auth.status === 'authenticated' && (
@@ -106,7 +100,7 @@ export default function AccountOrdersPage() {
             className={'status-chip' + (status === s ? ' active' : '')}
             onClick={() => setStatus(s)}
           >
-            {s ? STATUS_LABELS[s] : 'Todos'}
+            {s ? ORDER_STATUS_LABELS[s] : 'Todos'}
           </button>
         ))}
       </div>
@@ -123,7 +117,7 @@ export default function AccountOrdersPage() {
               </div>
               <div>
                 <span className={'order-status ' + o.status.toLowerCase()}>
-                  {STATUS_LABELS[o.status] || o.status}
+                  {ORDER_STATUS_LABELS[o.status] || o.status}
                 </span>
               </div>
               <div className="order-total">{money(o.grandTotal)}</div>
@@ -138,19 +132,16 @@ export default function AccountOrdersPage() {
                 <Link to={`/account/orders/${o.id}`} className="text-link">
                   Ver detalle
                 </Link>
-                {o.status === 'PENDING_PAYMENT' && (
-                  <button className="cancel-btn" onClick={() => cancelOrder(o.id)}>
-                    Cancelar
-                  </button>
-                )}
+
               </div>
             </div>
           ))}
         </div>
       ) : (
         <div className="empty-state">
-          <h3>No hay pedidos</h3>
-          <Link to="/catalog" className="btn lime">Ver catálogo</Link>
+          <h3>No tienes compras pagadas en este filtro</h3>
+          <p>Los productos de los intentos de pago sin confirmar permanecen en tu carrito.</p>
+          <Link to="/cart" className="btn lime">Ver carrito</Link>
         </div>
       )}
 

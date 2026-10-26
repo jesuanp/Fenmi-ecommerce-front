@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import useCart from '@/stores/cart';
 import { money } from '@/services/settings';
@@ -9,6 +9,21 @@ import CouponInput from '@/components/CouponInput';
 export default function CartPage() {
   const cart = useCart();
   const umbral = useShippingSettings();
+
+  useEffect(() => {
+    cart.hydrate();
+  }, []);
+
+  // Antes de hidratar, items está vacío y se pintaba "Tu carrito está vacío"
+  // un instante aunque el carrito tuviera productos: se veía exactamente el
+  // síntoma de "veo el producto y luego me dice que no hay nada".
+  if (!cart.hydrated) {
+    return (
+      <div className="empty-state">
+        <h3>Cargando tu carrito…</h3>
+      </div>
+    );
+  }
 
   if (cart.items.length === 0) {
     return (
@@ -23,7 +38,7 @@ export default function CartPage() {
   }
 
   return (
-    <div className="container" style={{ padding: '56px 56px 72px' }}>
+    <div className="container cart-container">
       <h1 className="page-title">Carrito</h1>
       <div className="cart-page">
         <div className="cart-page-items">

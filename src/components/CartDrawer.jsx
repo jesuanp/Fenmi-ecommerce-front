@@ -25,7 +25,11 @@ export default function CartDrawer() {
             ✕
           </button>
         </div>
-        {cart.items.length === 0 ? (
+        {!cart.hydrated ? (
+          <div style={{ padding: '30px 0', color: 'var(--mid)', fontSize: '13px' }}>
+            Cargando tu carrito…
+          </div>
+        ) : cart.items.length === 0 ? (
           <div style={{ padding: '30px 0', color: 'var(--mid)', fontSize: '13px' }}>
             Tu carrito está vacío.
           </div>
@@ -33,7 +37,7 @@ export default function CartDrawer() {
           <div style={{ padding: '20px 0', display: 'grid', gap: '14px' }}>
             {cart.items.map((item) => (
               <div key={item.itemId} className="cart-line">
-                <img src={item.image} alt={item.name} />
+                <img loading="lazy" decoding="async" src={item.image} alt={item.name} />
                 <div className="cart-line-info">
                   <strong>{item.name}</strong>
                   <span className="cart-line-meta">

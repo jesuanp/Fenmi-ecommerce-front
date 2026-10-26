@@ -10,6 +10,7 @@ const NAV = [
   { to: '/admin/tags', icon: '#', label: 'Etiquetas' },
   { to: '/admin/orders', icon: '❒', label: 'Pedidos' },
   { to: '/admin/returns', icon: '↩', label: 'Devoluciones' },
+  { to: '/admin/refunds', icon: '◉', label: 'Reembolsos' },
   { to: '/admin/users', icon: '◎', label: 'Clientes' },
   { to: '/admin/inventory', icon: '▥', label: 'Inventario' },
   { to: '/admin/reviews', icon: '★', label: 'Reseñas' },
@@ -29,7 +30,7 @@ export default function AdminLayout() {
     }
   }, [auth.status, auth.checked]);
 
-  if (auth.status !== 'authenticated' || auth.user?.role !== 'ADMIN') {
+  if (auth.status !== 'authenticated' || !['ADMIN', 'SUPER_ADMIN'].includes(auth.user?.role)) {
     return (
       <div style={{ padding: 60, textAlign: 'center' }}>
         <p>Cargando panel…</p>

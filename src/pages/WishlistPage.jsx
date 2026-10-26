@@ -28,8 +28,12 @@ export default function WishlistPage() {
     const p = await productApi.getBySlug(item.slug);
     const variant = p.variants.find((v) => v.stock > 0);
     if (!variant) { ui.showToast('No hay stock disponible'); return; }
-    await cart.add(p, variant, 1);
-    ui.showToast('Agregado al carrito');
+    try {
+      await cart.add(p, variant, 1);
+      ui.showToast('Agregado al carrito');
+    } catch (err) {
+      ui.showToast(err.response?.data?.error?.message || 'No se pudo agregar al carrito');
+    }
   };
 
   return (

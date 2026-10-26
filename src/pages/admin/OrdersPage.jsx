@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminApi } from '@/services/admin';
 import { money } from '@/services/settings';
+import { orderStatusLabel, paymentStatusLabel } from '@/utils/orderDisplay';
 
-const STATUSES = ['', 'PENDING_PAYMENT', 'PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'];
+const STATUSES = ['', 'PENDING_PAYMENT', 'PAID', 'PAID_STOCK_ISSUE', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUND_PENDING', 'REFUNDED'];
 
 export default function AdminOrdersPage() {
   const [data, setData] = useState(null);
@@ -24,7 +25,7 @@ export default function AdminOrdersPage() {
       <h1 className="admin-title">Pedidos</h1>
       <div className="admin-toolbar" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-          {STATUSES.map((s) => <option key={s} value={s}>{s ? s.replace('_', ' ') : 'Todos los estados'}</option>)}
+          {STATUSES.map((s) => <option key={s} value={s}>{s ? orderStatusLabel(s) : 'Todos los estados'}</option>)}
         </select>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
           <input
@@ -42,10 +43,10 @@ export default function AdminOrdersPage() {
             {data?.data?.map((o) => (
               <tr key={o.id}>
                 <td><strong>{o.orderNumber}</strong></td>
-                <td><span className={'status-badge ' + o.status.toLowerCase()}>{o.status.replace('_', ' ')}</span></td>
+                <td><span className={'status-badge ' + o.status.toLowerCase()}>{orderStatusLabel(o.status)}</span></td>
                 <td>
-                  <span className={'status-badge ' + (o.paymentStatus === 'PAID' ? 'paid' : 'pending')}>
-                    {o.paymentStatus}
+                  <span className={'status-badge ' + (o.paymentStatus === 'PAID' ? 'paid' : o.paymentStatus === 'FAILED' ? 'cancelled' : 'pending')}>
+                    {paymentStatusLabel(o.paymentStatus)}
                   </span>
                   {o.payments?.[0]?.proofUrl && o.paymentStatus !== 'PAID' && (
                     <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--accent)' }}>📎</span>

@@ -79,12 +79,19 @@ export default function ProductPage() {
       ui.showToast('Selecciona una talla con disponibilidad');
       return;
     }
-    const ok = await cart.add(product, selectedVariant, qty);
-    if (ok) {
-      ui.showToast('Agregado al carrito');
-      ui.openCart();
-    } else {
-      ui.showToast('No hay stock suficiente');
+    try {
+      const ok = await cart.add(product, selectedVariant, qty);
+      if (ok) {
+        ui.showToast('Agregado al carrito');
+        ui.openCart();
+      } else {
+        ui.showToast('No hay stock suficiente');
+      }
+    } catch (err) {
+      // cart.add ya no inventa el ítem cuando el servidor lo rechaza, así que
+      // aquí es obligatorio avisar: si no, el usuario creería que está en el
+      // carrito y al pagar le dirían que no hay productos.
+      ui.showToast(err.response?.data?.error?.message || 'No se pudo agregar al carrito');
     }
   };
 

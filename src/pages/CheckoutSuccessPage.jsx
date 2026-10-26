@@ -1,34 +1,70 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams, useLocation, Link } from 'react-router-dom';
-import { paymentApi } from '@/services/payments';
+import { useParams, useLocation, Link, useNavigate } from 'react-router-dom';
+import {
+  paymentApi,
+  readPendingPayment,
+  clearPendingPayment
+} from '@/services/payments';
+import { orderApi } from '@/services/orders';
 import settingsApi from '@/services/settings';
 import useUI from '@/stores/ui';
+import useCart from '@/stores/cart';
+
+const FINAL_STATUSES = ['APPROVED', 'DECLINED', 'FAILED', 'VOIDED'];
+// Tope del polling: ~2 min con esperas de 2.5-3.5s. Si el webhook no llega en
+// ese plazo no es motivo para quedarse girando para siempre; el pago se
+// confirma igual del lado de Wompi y le avisamos al cliente por correo.
+const MAX_POLLS = 40;
 
 export default function CheckoutSuccessPage() {
   const { orderNumber } = useParams();
   const location = useLocation();
   const state = location.state || {};
   const ui = useUI();
-  const [paymentConfig, setPaymentConfig] = useState(null);
+  const cart = useCart();
+  const navigate = useNavigate();
+
+  // Wompi puede redirigirnos fuera del SPA y al volver esta página se
+  // reconstruye sin location.state, así que el pedido se recupera de
+  // sessionStorage (lo guarda CheckoutPage antes de abrir el widget).
+  const [pending] = useState(() => readPendingPayment());
+  const orderId = state.orderId || pending?.orderId || null;
+
   const [bankAccounts, setBankAccounts] = useState(null);
   const [bank, setBank] = useState('NEQUI');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [sending, setSending] = useState(false);
   const [proofSent, setProofSent] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
 
-  // Wompi: estado consultado por polling para saber si el webhook ya llegó.
-  const [wompiStatus, setWompiStatus] = useState('PENDING');
+  const [wompiStatus, setWompiStatus] = useState('VERIFYING');
+  const [confirmedOrderStatus, setConfirmedOrderStatus] = useState(null);
+  const [wompiTx] = useState(state.wompiTx || null);
   const fileRef = useRef();
   const blobUrlRef = useRef(null);
 
-  const isWompi = paymentConfig?.provider === 'wompi';
+  const [paymentProvider, setPaymentProvider] = useState(state.provider || pending?.provider || null);
+
+  // El proveedor real viene de /payments/config, no de la tabla de settings:
+  // tras un refresh el estado de la SPA se perdió y necesitamos saber si este
+  // pedido se paga por Wompi o con transferencia manual.
+  useEffect(() => {
+    paymentApi
+      .getConfig()
+      .then((c) => setPaymentProvider(c?.provider || null))
+      .catch(() => {
+        /* si no responde, nos quedamos con el dato de state/pending */
+      });
+  }, []);
+
+  const isWompi = paymentProvider === 'wompi' || !!state.wompiTx || pending?.provider === 'wompi';
 
   useEffect(() => {
     settingsApi
       .get()
       .then((s) => {
-        setPaymentConfig(s.payment || null);
         setBankAccounts(s.bankAccounts || null);
       });
   }, []);
@@ -41,28 +77,64 @@ export default function CheckoutSuccessPage() {
     };
   }, []);
 
-  // Polling del estado del pago en Wompi (mientras no llegue APPROVED/DECLINED/FAILED).
   useEffect(() => {
     if (!isWompi || !orderNumber) return undefined;
+
     let cancelled = false;
+    let timer = null;
+    let attempts = 0;
     const tick = async () => {
+      attempts += 1;
+      if (attempts > MAX_POLLS) {
+        if (!cancelled) setTimedOut(true);
+        return;
+      }
       try {
-        const r = await paymentApi.status('wompi', orderNumber);
+        const r = await paymentApi.verify('wompi', orderNumber);
         if (cancelled) return;
         const s = (r && r.status) || 'PENDING';
-        setWompiStatus(s);
-        if (s !== 'APPROVED' && s !== 'DECLINED' && s !== 'FAILED') {
-          setTimeout(tick, 2000);
+        setWompiStatus(r?.confirmed ? 'APPROVED' : s);
+        setConfirmedOrderStatus(r?.orderStatus || null);
+        if (!FINAL_STATUSES.includes(String(s).toUpperCase())) {
+          timer = setTimeout(tick, 2500);
         }
       } catch {
-        if (!cancelled) setTimeout(tick, 3000);
+        if (!cancelled) timer = setTimeout(tick, 3500);
       }
     };
     tick();
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isWompi, orderNumber]);
+
+  // Cuando el pago llega a un estado final ya no hay nada pendiente que
+  // recuperar, así que soltamos el pedido guardado en sessionStorage.
+  useEffect(() => {
+    if (FINAL_STATUSES.includes(String(wompiStatus || '').toUpperCase())) {
+      if (readPendingPayment()?.orderNumber === orderNumber) clearPendingPayment();
+      cart.hydrate();
+    }
+  }, [wompiStatus, orderNumber]);
+
+  const retryPayment = async () => {
+    if (!orderId) {
+      ui.showToast('No se pudo identificar el pedido');
+      return;
+    }
+    setRetrying(true);
+    try {
+      await orderApi.abandon(orderId);
+      if (readPendingPayment()?.orderNumber === orderNumber) clearPendingPayment();
+      await cart.hydrate();
+      navigate('/checkout');
+    } catch (err) {
+      ui.showToast(err.response?.data?.error?.message || 'No se pudo reiniciar el pago');
+      setRetrying(false);
+    }
+  };
 
   const onSelectFile = (e) => {
     const f = e.target.files?.[0];
@@ -86,13 +158,13 @@ export default function CheckoutSuccessPage() {
       ui.showToast('Selecciona una captura del comprobante');
       return;
     }
-    if (!state.orderId) {
+    if (!orderId) {
       ui.showToast('No se pudo identificar el pedido');
       return;
     }
     setSending(true);
     try {
-      await paymentApi.uploadProof(state.orderId, file, bank);
+      await paymentApi.uploadProof(orderId, file, bank);
       setProofSent(true);
       ui.showToast('Comprobante enviado. Te avisaremos cuando sea aprobado.');
     } catch (err) {
@@ -108,38 +180,59 @@ export default function CheckoutSuccessPage() {
 
   return (
     <div className="empty-state" style={{ padding: '60px 24px' }}>
-      <div className="success-check" style={{ background: isWompi && wompiStatus === 'DECLINED' ? '#d1382c' : undefined, color: isWompi && wompiStatus === 'DECLINED' ? '#fff' : undefined }}>
-        {isWompi && wompiStatus === 'DECLINED' ? '✕' : '✓'}
+      <div className="success-check" style={{ background: isWompi && wompiStatus !== 'APPROVED' ? (FINAL_STATUSES.includes(wompiStatus) ? '#d1382c' : '#fff3cd') : undefined, color: isWompi && wompiStatus !== 'APPROVED' ? (FINAL_STATUSES.includes(wompiStatus) ? '#fff' : '#8a6d3b') : undefined }}>
+        {isWompi && FINAL_STATUSES.includes(wompiStatus) && wompiStatus !== 'APPROVED' ? '✕' : isWompi && wompiStatus !== 'APPROVED' ? '…' : '✓'}
       </div>
       <h1 style={{ fontSize: 32, fontWeight: 800 }}>
-        {isWompi && wompiStatus === 'APPROVED'
+        {isWompi && wompiStatus === 'APPROVED' && confirmedOrderStatus === 'PAID_STOCK_ISSUE'
+          ? 'Pago confirmado · pedido en revisión'
+          : isWompi && wompiStatus === 'APPROVED'
           ? '¡Pago confirmado!'
-          : isWompi && (wompiStatus === 'DECLINED' || wompiStatus === 'FAILED')
-          ? 'El pago fue rechazado'
-          : '¡Pedido recibido!'}
+          : isWompi && ['DECLINED', 'FAILED', 'VOIDED'].includes(wompiStatus)
+          ? 'El pago no fue aprobado'
+          : isWompi && timedOut
+          ? 'Seguimos verificando tu pago'
+          : isWompi
+          ? 'Esperando confirmación del pago'
+          : proofSent ? 'Comprobante recibido · en revisión' : 'Esperando tu pago'}
       </h1>
       <p style={{ color: 'var(--mid)', fontSize: 14, marginBottom: 6 }}>
-        Tu pedido <strong>{orderNumber}</strong> fue creado correctamente.
+        {isWompi && wompiStatus !== 'APPROVED' ? 'Referencia de pago' : 'Compra'} <strong>{orderNumber}</strong>.
       </p>
       {!isWompi && (
         <p style={{ color: 'var(--mid)', fontSize: 13 }}>
-          Realiza el pago y envíanos el comprobante para confirmar tu pedido.
+          Realiza el pago y envíanos el comprobante. Los productos permanecerán en el carrito hasta la aprobación.
+        </p>
+      )}
+      {isWompi && wompiStatus !== 'APPROVED' && (
+        <p style={{ color: 'var(--mid)', fontSize: 13 }}>
+          Tu compra no se marcará como pagada hasta que nuestro servidor reciba
+          la confirmación de Wompi. Los productos siguen en tu carrito y esta compra no aparece en Mis pedidos.
         </p>
       )}
       {isWompi && wompiStatus === 'APPROVED' && (
         <p style={{ color: 'var(--mid)', fontSize: 13 }}>
-          Recibirás un correo con la confirmación y los datos de envío.
+          {confirmedOrderStatus === 'PAID_STOCK_ISSUE'
+            ? 'El pago fue recibido, pero tu pedido requiere una revisión antes de preparar el envío. Nuestro equipo revisará el caso.'
+            : 'Recibirás la confirmación del pago por correo. Te notificaremos cuando comience la preparación del pedido.'}
         </p>
       )}
-      {isWompi && wompiStatus === 'PENDING' && (
+      {isWompi && wompiStatus === 'PENDING' && !timedOut && (
         <p style={{ color: 'var(--mid)', fontSize: 13 }}>
           Estamos confirmando tu pago con Wompi. Esta página se actualizará
           automáticamente.
         </p>
       )}
-      {isWompi && (wompiStatus === 'DECLINED' || wompiStatus === 'FAILED') && (
+      {isWompi && timedOut && (
         <p style={{ color: 'var(--mid)', fontSize: 13 }}>
-          Intenta de nuevo desde tu cuenta o escríbenos por WhatsApp para
+          Wompi todavía no ha confirmado el resultado. Conservamos los
+          productos en el carrito, pero evita iniciar otro pago si ya completaste
+          una transacción bancaria. Si se aprueba, recibirás un correo.
+        </p>
+      )}
+      {isWompi && (['DECLINED', 'FAILED', 'VOIDED'].includes(wompiStatus)) && (
+        <p style={{ color: 'var(--mid)', fontSize: 13 }}>
+          Tus productos permanecen en el carrito. Puedes reintentar el pago o escríbenos por WhatsApp para
           ayudarte.
         </p>
       )}
@@ -287,13 +380,13 @@ export default function CheckoutSuccessPage() {
             background:
               wompiStatus === 'APPROVED'
                 ? 'var(--lime-light)'
-                : wompiStatus === 'DECLINED' || wompiStatus === 'FAILED'
+                : ['DECLINED', 'FAILED', 'VOIDED'].includes(wompiStatus)
                 ? '#fde7e6'
                 : '#fff3cd',
             color:
               wompiStatus === 'APPROVED'
                 ? 'var(--teal-dark)'
-                : wompiStatus === 'DECLINED' || wompiStatus === 'FAILED'
+                : ['DECLINED', 'FAILED', 'VOIDED'].includes(wompiStatus)
                 ? '#8a2c20'
                 : '#8a6d3b'
           }}
@@ -304,15 +397,28 @@ export default function CheckoutSuccessPage() {
             ? 'Pago rechazado por Wompi'
             : wompiStatus === 'FAILED'
             ? 'Pago fallido'
+            : wompiStatus === 'VOIDED'
+            ? 'Pago anulado'
             : 'Procesando pago…'}
         </div>
       )}
 
+      {isWompi && wompiTx?.id && (
+        <p style={{ fontSize: 11, color: 'var(--light)', marginTop: 8 }}>
+          Transacción Wompi: {wompiTx.id}
+        </p>
+      )}
+
       <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 28 }}>
-        {isWompi && wompiStatus === 'DECLINED' && (
-          <Link to="/cart" className="btn outline">
-            Volver al carrito
-          </Link>
+        {isWompi &&
+          orderId &&
+          ['DECLINED', 'FAILED', 'VOIDED'].includes(wompiStatus) && (
+            <button type="button" className="btn lime" onClick={retryPayment} disabled={retrying}>
+              {retrying ? 'Preparando…' : 'Reintentar el pago'}
+            </button>
+          )}
+        {isWompi && wompiStatus !== 'APPROVED' && (
+          <Link to="/cart" className="btn outline">Volver al carrito</Link>
         )}
         <Link to="/catalog" className="btn lime">Seguir comprando</Link>
         <Link to="/" className="btn outline">Volver al inicio</Link>

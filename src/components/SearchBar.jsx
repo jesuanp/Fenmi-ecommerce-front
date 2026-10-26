@@ -50,7 +50,7 @@ export default function SearchBar() {
         <div className="search-suggest">
           {results.map((r) => (
             <Link key={r.slug} to={`/products/${r.slug}`} onClick={() => setResults([])}>
-              <img src={r.image} alt="" />
+              <img loading="lazy" decoding="async" src={r.image} alt="" />
               <div>
                 <div className="s-name">{r.name}</div>
                 <div className="s-price">{money(r.price)}</div>

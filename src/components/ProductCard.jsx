@@ -9,7 +9,7 @@ export default function ProductCard({ product }) {
   return (
     <Link to={`/products/${product.slug}`} className="product-card">
       <div className={'pic' + (out ? ' out' : '')}>
-        <img loading="lazy" src={product.image} alt={product.name} />
+        <img decoding="async" loading="lazy" src={product.image} alt={product.name} />
         {out && <span className="pic-badge">Agotado</span>}
         <span className="card-heart"><WishlistButton productId={product.id} size={28} /></span>
       </div>

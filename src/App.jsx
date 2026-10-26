@@ -30,6 +30,7 @@ const AdminTagsPage = lazy(() => import('./pages/admin/TagsPage'));
 const AdminOrdersPage = lazy(() => import('./pages/admin/OrdersPage'));
 const AdminOrderDetailPage = lazy(() => import('./pages/admin/OrderDetailPage'));
 const AdminReturnsPage = lazy(() => import('./pages/admin/ReturnsPage'));
+const AdminRefundsPage = lazy(() => import('./pages/admin/RefundsPage'));
 const AdminUsersPage = lazy(() => import('./pages/admin/UsersPage'));
 const AdminUserDetailPage = lazy(() => import('./pages/admin/UserDetailPage'));
 const AdminInventoryPage = lazy(() => import('./pages/admin/InventoryPage'));
@@ -51,7 +52,7 @@ function RequireAdmin({ children }) {
   }, [auth.status, auth.checked]);
   if (!auth.checked) return null;
   if (auth.status !== 'authenticated') return null;
-  if (auth.user?.role !== 'ADMIN') return <Navigate to="/" replace />;
+  if (!['ADMIN', 'SUPER_ADMIN'].includes(auth.user?.role)) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -98,6 +99,7 @@ export default function App() {
           <Route path="orders" element={<Lazy><AdminOrdersPage /></Lazy>} />
           <Route path="orders/:id" element={<Lazy><AdminOrderDetailPage /></Lazy>} />
           <Route path="returns" element={<Lazy><AdminReturnsPage /></Lazy>} />
+          <Route path="refunds" element={<Lazy><AdminRefundsPage /></Lazy>} />
           <Route path="users" element={<Lazy><AdminUsersPage /></Lazy>} />
           <Route path="users/:id" element={<Lazy><AdminUserDetailPage /></Lazy>} />
           <Route path="inventory" element={<Lazy><AdminInventoryPage /></Lazy>} />

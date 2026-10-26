@@ -3,9 +3,10 @@ import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
 import { money } from '@/services/settings';
 
-const STATUSES = ['', 'PENDING', 'APPROVED', 'REJECTED'];
+const STATUSES = ['', 'PENDING', 'PROCESSING', 'APPROVED', 'REJECTED'];
 const STATUS_LABELS = {
   PENDING: 'Pendiente',
+  PROCESSING: 'Reembolso solicitado',
   APPROVED: 'Aprobada',
   REJECTED: 'Rechazada'
 };
@@ -19,6 +20,7 @@ export default function AdminReturnsPage() {
   const [active, setActive] = useState(null);
   const [adminNote, setAdminNote] = useState('');
   const [working, setWorking] = useState(false);
+  const [restock, setRestock] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -37,6 +39,7 @@ export default function AdminReturnsPage() {
   const openModal = (req) => {
     setActive(req);
     setAdminNote('');
+    setRestock(false);
   };
   const closeModal = () => {
     if (working) return;
@@ -49,8 +52,8 @@ export default function AdminReturnsPage() {
     setWorking(true);
     try {
       const fn = action === 'approve' ? adminApi.approveReturn : adminApi.rejectReturn;
-      await fn(active.id, adminNote.trim() || undefined);
-      ui.showToast(action === 'approve' ? 'Devolución aprobada' : 'Devolución rechazada');
+      await fn(active.id, adminNote.trim() || undefined, restock);
+      ui.showToast(action === 'approve' ? 'Reembolso solicitado. Verifica su confirmación en el pedido.' : 'Devolución rechazada');
       closeModal();
       load();
     } catch (err) {
@@ -65,8 +68,7 @@ export default function AdminReturnsPage() {
     <div>
       <h1 className="admin-title">Devoluciones</h1>
       <p style={{ color: 'var(--mid)', fontSize: 13, marginTop: -6, marginBottom: 14 }}>
-        Solicitudes de devolución iniciadas por los clientes. Al aprobar se reembolsa el pedido, se restituye el stock
-        y se libera el cupón si lo usó.
+        Solicitudes de devolución. Aprobar inicia un reembolso; el dinero no se considera devuelto hasta confirmar la operación. El stock solo se restituye cuando corresponda.
       </p>
 
       <div className="admin-toolbar" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -167,9 +169,14 @@ export default function AdminReturnsPage() {
               maxLength={500}
               value={adminNote}
               onChange={(e) => setAdminNote(e.target.value)}
-              placeholder="Ej. Te reembolsaremos en 5 días hábiles."
+              placeholder="Notas sobre la revisión y la devolución"
               style={{ width: '100%', resize: 'vertical' }}
             />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <input type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} />
+              Devolver unidades al inventario cuando se confirme el reembolso
+            </label>
+            <p style={{ fontSize: 12, color: 'var(--mid)' }}>Activa la restitución solo si los artículos llegaron de vuelta o realmente deben quedar disponibles.</p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
               <button className="btn outline small" onClick={closeModal} disabled={working}>Cancelar</button>
               <button
@@ -185,7 +192,7 @@ export default function AdminReturnsPage() {
                 onClick={() => decide('approve')}
                 disabled={working}
               >
-                {working ? 'Procesando…' : 'Aprobar y reembolsar'}
+                {working ? 'Procesando…' : 'Iniciar reembolso'}
               </button>
             </div>
           </div>

@@ -1,15 +1,20 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import useCart from '@/stores/cart';
 import useUI from '@/stores/ui';
 import settingsApi from '@/services/settings';
 import { orderApi } from '@/services/orders';
-import { paymentApi } from '@/services/payments';
+import { paymentApi, savePendingPayment, clearPendingPayment, readPendingPayment } from '@/services/payments';
 import { addressApi } from '@/services/addresses';
 import { money } from '@/services/settings';
 import useAuth from '@/stores/auth';
+import { isOptionalPostalCodeValid, normalizeSavedPostalCode } from '@/utils/postalCode';
+import { checkoutFingerprint, decideWompiRetry } from '@/utils/checkoutRetry';
+import { isWompiWidgetVisible, watchWompiWidgetClose } from '@/utils/wompiWidget';
+import { loadWompiWidget } from '@/utils/loadWompi';
+import { buildWompiWebCheckoutUrl, shouldUseWompiWebCheckout } from '@/utils/wompiWebCheckout';
 
-const STEPS = ['Información', 'Envío', 'Método', 'Resumen'];
+const STEPS = ['Datos y envío', 'Entrega', 'Pago'];
 
 const WDEBUG = import.meta.env.DEV;
 const wlog = (...a) => { if (WDEBUG) console.log('[wompi:fe]', ...a); };
@@ -17,7 +22,7 @@ const werr = (...a) => { if (WDEBUG) console.error('[wompi:fe]', ...a); };
 
 // Diagnóstico del entorno de Wompi en el navegador.
 function wompiEnvReport() {
-  if (!WDEBUG) return;
+  if (!WDEBUG || shouldUseWompiWebCheckout()) return;
   const script = document.querySelector('script[src*="checkout.wompi.co"]');
   console.log('[wompi:fe] === DIAGNÓSTICO ENTORNO WOMPI ===', {
     'script widget.js presente en DOM': script ? script.src : false,
@@ -28,26 +33,80 @@ function wompiEnvReport() {
   });
 }
 
-const WOMPI_METHODS = [
-  { value: 'CARD', label: 'Tarjeta de crédito/débito', icon: '💳' },
-  { value: 'PSE', label: 'PSE (transferencia bancaria)', icon: '🏦' },
-  { value: 'NEQUI', label: 'Nequi', icon: '💜' },
-  { value: 'BANCOLOMBIA_TRANSFER', label: 'Transferencia Bancolombia', icon: '🟡' }
-];
-
 export default function CheckoutPage() {
   const cart = useCart();
   const auth = useAuth();
   const ui = useUI();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    cart.hydrate();
+  }, []);
   const [shippingMethods, setShippingMethods] = useState([]);
   const [quote, setQuote] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [paymentPending, setPaymentPending] = useState(false);
+  const submittingRef = useRef(false);
+  const watcherRef = useRef(null);
+
+  useEffect(() => () => watcherRef.current?.(), []);
+
+  const stopWatchingWidget = () => {
+    watcherRef.current?.();
+    watcherRef.current = null;
+  };
+
+  // Rescate de intentos anteriores: en una instalación antigua el carrito pudo
+  // quedar CONVERTED al abrir Wompi. Antes de tocar nada preguntamos a la API
+  // qué pasó con ese
+  // pago: si sigue en vuelo no se descarta (el cliente puede estar en el
+  // banco con un PSE abierto), si falló le devolvemos los artículos.
+  const rescueRef = useRef(false);
+  useEffect(() => {
+    if (rescueRef.current) return;
+    if (!cart.hydrated || cart.items.length > 0) return;
+    const pending = readPendingPayment();
+    if (!pending?.orderId) return;
+
+    rescueRef.current = true;
+    (async () => {
+      let status = 'PENDING';
+      try {
+        const r = await paymentApi.verify('wompi', pending.orderNumber);
+        status = String(r?.status || 'PENDING').toUpperCase();
+      } catch {
+        status = 'UNKNOWN';
+      }
+      wlog('rescate: estado del pago pendiente =', status);
+
+      if (status === 'APPROVED') {
+        clearPendingPayment();
+        navigate(`/checkout/success/${pending.orderNumber}`, { replace: true });
+        return;
+      }
+      if (status === 'PENDING' || status === 'UNKNOWN') {
+        await cart.hydrate();
+        ui.showToast('El pago anterior sigue sin confirmación. Los productos deben permanecer en tu carrito.');
+        return;
+      }
+
+      try {
+        await orderApi.abandon(pending.orderId);
+        clearPendingPayment();
+        await cart.hydrate();
+        wlog('rescate: pedido liberado de vuelta al carrito');
+      } catch (e) {
+        werr('no se pudo rescatar el pedido pendiente', e?.message);
+        navigate('/cart', { replace: true });
+      }
+    })();
+  }, [cart.hydrated, cart.items.length]);
 
   // Inicial: si carrito vacío → redirect.
   useEffect(() => {
     wompiEnvReport();
+    if (rescueRef.current) return;
     if (cart.hydrated && cart.items.length === 0) {
       navigate('/cart', { replace: true });
     }
@@ -64,7 +123,7 @@ export default function CheckoutPage() {
       .then((s) => setShippingMethods(s.shipping?.methods || []))
       .catch(() => {
         ui.showToast('No se pudieron cargar los métodos de envío');
-        setShippingMethods([{ id: 'nacional', name: 'Envío nacional', description: '2 a 3 días hábiles', cost: 12000 }]);
+        setShippingMethods([]);
       });
 
     // /payments/config trae publicKey + enlaces a los contratos que Wompi
@@ -85,6 +144,7 @@ export default function CheckoutPage() {
   // Dirección guardada del usuario (para no volver a escribirla).
   const [savedAddress, setSavedAddress] = useState(null);
   const [usingSaved, setUsingSaved] = useState(false);
+  const [invalidSavedPostalCode, setInvalidSavedPostalCode] = useState(false);
 
   // Cargar la última dirección guardada si hay sesión.
   useEffect(() => {
@@ -121,15 +181,19 @@ export default function CheckoutPage() {
     postal_code: '',
     country: 'CO',
     instructions: '',
-    methodId: '',
-    paymentMethod: ''
+    methodId: ''
   });
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k, v) => {
+    if (k === 'postal_code') setInvalidSavedPostalCode(false);
+    setForm((f) => ({ ...f, [k]: v }));
+  };
 
   // Aplicar la dirección guardada a los campos de envío.
   useEffect(() => {
     if (!usingSaved || !savedAddress) return;
+    const savedCode = String(savedAddress.postal_code ?? '').trim();
+    setInvalidSavedPostalCode(Boolean(savedCode && !isOptionalPostalCodeValid(savedCode)));
     setForm((f) => ({
       ...f,
       recipient: savedAddress.recipient || f.recipient,
@@ -138,13 +202,14 @@ export default function CheckoutPage() {
       line2: savedAddress.line2 || f.line2,
       city: savedAddress.city || f.city,
       state: savedAddress.state || f.state,
-      postal_code: savedAddress.postal_code || f.postal_code,
+      postal_code: normalizeSavedPostalCode(savedAddress.postal_code) || f.postal_code,
       instructions: savedAddress.instructions || f.instructions
     }));
   }, [usingSaved, savedAddress]);
 
   const discardSavedAddress = () => {
     setUsingSaved(false);
+    setInvalidSavedPostalCode(false);
     setForm((f) => ({
       ...f,
       recipient: '',
@@ -158,12 +223,10 @@ export default function CheckoutPage() {
   };
 
   const wompiMode = paymentConfig?.provider === 'wompi';
-  const wompiMethods = Array.isArray(paymentConfig?.methods) && paymentConfig.methods.length
-    ? paymentConfig.methods
-    : WOMPI_METHODS.map((m) => m.value);
-  const methodLabel = (v) => WOMPI_METHODS.find((m) => m.value === v) || { label: v, icon: '•' };
+  // El método de pago NO se elige aquí: el widget de Wompi lo pide al cliente
+  // dentro de su propia pasarela. Solo se exige aceptar los contratos.
   const contractsAccepted = !wompiMode || (acceptTerms && acceptPrivacy);
-  const wompiReady = !wompiMode || (!!methodLabel(form.paymentMethod).label && form.paymentMethod) && contractsAccepted;
+  const wompiReady = contractsAccepted;
 
   // Recalcular quote cuando cambia método o subtotal.
   useEffect(() => {
@@ -175,14 +238,31 @@ export default function CheckoutPage() {
   }, [form.methodId, cart.subtotal()]);
 
   const infoValid = form.firstName.trim() && form.lastName.trim() && form.email.trim() && form.phone.trim();
-  const addrValid = form.recipient.trim() && form.phone && form.line1.trim() && form.city.trim() && form.state.trim();
-  const methodValid = !!form.methodId;
+  const postalCodeValid = isOptionalPostalCodeValid(form.postal_code);
+  const addrValid = form.recipient.trim() && form.phone && form.line1.trim() && form.city.trim() && form.state.trim() && postalCodeValid;
+  const methodValid = !!form.methodId && shippingMethods.some((method) => String(method.id) === String(form.methodId));
+
+  const shippingDiscount = cart.coupon?.type === 'FREE_SHIPPING' && quote ? Number(quote.cost || 0) : 0;
+  const displayTotal = Math.max(0, Number(cart.subtotal() || 0) + Number(quote?.cost || 0) - Number(cart.discount || 0) - shippingDiscount);
 
   const submitOrder = async () => {
+    if (submittingRef.current) return;
+    if (wompiMode && paymentPending && isWompiWidgetVisible()) {
+      ui.showToast('La pasarela de Wompi todavía está abierta. Ciérrala antes de intentar nuevamente.');
+      return;
+    }
+    if (!postalCodeValid) {
+      setStep(0);
+      ui.showToast('El código postal debe tener 6 dígitos, o puedes dejarlo vacío.');
+      return;
+    }
+    submittingRef.current = true;
+    stopWatchingWidget();
+    setPaymentPending(false);
     setSubmitting(true);
     let createdOrderId = null;
     try {
-      const order = await orderApi.create({
+      const orderPayload = {
         customer: {
           firstName: form.firstName.trim(),
           lastName: form.lastName.trim(),
@@ -201,30 +281,129 @@ export default function CheckoutPage() {
           instructions: form.instructions?.trim() || null
         },
         methodId: form.methodId
+      };
+      const fingerprint = checkoutFingerprint({
+        items: cart.items,
+        ...orderPayload,
+        coupon: cart.coupon,
+        discount: cart.discount,
+        total: cart.total
       });
-      createdOrderId = order.id;
+      let order = null;
+      let savedWidget = null;
 
-      // Wompi: la transacción ya se creó en el backend; redirigimos al
-      // checkout alojado por Wompi, que devuelve al cliente a /checkout/success.
       if (wompiMode) {
-        wlog('llamando POST /payments/create con método', form.paymentMethod);
-        const pay = await paymentApi.create(order.id, form.paymentMethod);
-        wlog('respuesta de /payments/create →', pay);
-
-        wompiEnvReport();
-
-        if (!pay?.redirectUrl) {
-          werr('el backend NO devolvió redirectUrl', { pay });
-          throw new Error('Wompi no devolvió una URL de pago.');
+        const pending = readPendingPayment();
+        if (pending?.orderId && pending?.orderNumber && pending.provider === 'wompi') {
+          if (pending.fingerprint === fingerprint) {
+            const status = await paymentApi.verify('wompi', pending.orderNumber);
+            const action = decideWompiRetry(pending, fingerprint, status?.status);
+            if (action === 'APPROVED') {
+              navigate(`/checkout/success/${pending.orderNumber}`, { replace: true });
+              return;
+            }
+            if (action === 'VERIFY') {
+              ui.showToast('No pudimos verificar el pago anterior. Intenta de nuevo en unos momentos.');
+              return;
+            }
+            if (action === 'RESTART') {
+              await orderApi.abandon(pending.orderId);
+              clearPendingPayment();
+              await cart.hydrate();
+            } else if (action === 'REUSE') {
+              order = { id: pending.orderId, orderNumber: pending.orderNumber };
+              savedWidget = pending.widget || null;
+            }
+          } else {
+            const previous = await paymentApi.verify('wompi', pending.orderNumber);
+            if (previous.confirmed || previous.status === 'APPROVED') {
+              navigate(`/checkout/success/${pending.orderNumber}`, { replace: true });
+              return;
+            }
+            if (['DECLINED', 'FAILED', 'VOIDED'].includes(previous.status)) {
+              await orderApi.abandon(pending.orderId);
+              clearPendingPayment();
+              await cart.hydrate();
+            } else {
+              ui.showToast('Hay un pago anterior sin confirmar. Comprueba ese intento antes de modificar la compra para evitar dos cobros.');
+              return;
+            }
+          }
         }
-        wlog('redirigiendo a', pay.redirectUrl);
-        window.location.href = pay.redirectUrl;
-        return;
       }
 
-      // Pago manual: el pedido queda PENDING_PAYMENT y el cliente sube
+      if (!order) {
+        order = await orderApi.create(orderPayload);
+        createdOrderId = order.id;
+      }
+
+      if (wompiMode) {
+        const webCheckout = shouldUseWompiWebCheckout();
+        if (!webCheckout) await loadWompiWidget();
+        const pay = savedWidget ? null : await paymentApi.create(order.id);
+        const w = savedWidget || pay?.widget;
+        if (!w?.publicKey || !w?.integritySignature) {
+          throw new Error('Configuración de pago incompleta.');
+        }
+        const mobileCheckoutUrl = webCheckout ? buildWompiWebCheckoutUrl(w) : null;
+        if (!webCheckout && typeof window.WidgetCheckout !== 'function') {
+          throw new Error('El widget de Wompi no cargó. Revisa tu conexión.');
+        }
+
+        savePendingPayment({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          provider: 'wompi',
+          widget: w,
+          fingerprint
+        });
+
+        if (mobileCheckoutUrl) {
+          window.location.assign(mobileCheckoutUrl);
+          return;
+        }
+
+        const checkout = new window.WidgetCheckout({
+          publicKey: w.publicKey,
+          currency: w.currency,
+          amountInCents: w.amountInCents,
+          reference: w.reference,
+          redirectUrl: w.redirectUrl,
+          signature: { integrity: w.integritySignature }
+        });
+
+        setPaymentPending(true);
+        watcherRef.current = watchWompiWidgetClose(() => {
+          watcherRef.current = null;
+          setPaymentPending(false);
+        });
+
+        try {
+          checkout.open((result) => {
+            stopWatchingWidget();
+            setPaymentPending(false);
+            const tx = result?.transaction || {};
+            const status = String(tx.status || '').toUpperCase();
+            wlog('callback del widget →', { status });
+            if (!status) {
+              ui.showToast('Pago no confirmado. Tus productos permanecen en el carrito.');
+              return;
+            }
+            navigate(`/checkout/success/${order.orderNumber}`, {
+              state: { orderId: order.id, provider: 'wompi', wompiTx: tx }
+            });
+          });
+        } catch (error) {
+          stopWatchingWidget();
+          setPaymentPending(false);
+          throw error;
+        }
+        return;
+      }
+      // Pago manual sin pedido visible en la cuenta hasta su aprobación.
+      // El pedido queda PENDING_PAYMENT y el cliente sube
       // la captura del comprobante (Nequi / Bancolombia) en la página de éxito.
-      ui.showToast('Pedido creado');
+      ui.showToast('Solicitud de pago creada. El carrito se conserva hasta aprobarse el pago.');
       await cart.hydrate();
       navigate(`/checkout/success/${order.orderNumber}`, {
         state: { orderId: order.id, provider: 'manual' }
@@ -235,6 +414,7 @@ export default function CheckoutPage() {
       if (createdOrderId) {
         try {
           await orderApi.abandon(createdOrderId);
+          if (readPendingPayment()?.orderId === createdOrderId) clearPendingPayment();
           await cart.hydrate();
         } catch {
           /* noop: si no se puede revertir, al menos avisamos */
@@ -256,17 +436,18 @@ export default function CheckoutPage() {
       const list = details
         .map((d) => `${(d.path || d.field || []).join('.')}: ${d.message}`)
         .join(' · ');
-      ui.showToast(list || e.message || 'Error al crear el pedido');
+      ui.showToast(list || e.message || err.message || 'Error al crear el pedido');
       if (err.response?.data?.error?.code === 'INSUFFICIENT_STOCK') {
         await cart.hydrate();
       }
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="container" style={{ padding: '40px 56px 72px' }}>
+    <div className="container checkout-container">
       <h1 className="page-title" style={{ marginBottom: 8 }}>
         Finalizar compra
       </h1>
@@ -277,118 +458,125 @@ export default function CheckoutPage() {
         <div className="checkout-main">
           {step === 0 && (
             <div className="checkout-step">
-              <h2>Información del cliente</h2>
-              <Field label="Nombre" value={form.firstName} onChange={(v) => set('firstName', v)} />
-              <Field label="Apellido" value={form.lastName} onChange={(v) => set('lastName', v)} />
-              <Field label="Correo" type="email" value={form.email} onChange={(v) => set('email', v)} />
-              <Field label="Teléfono" value={form.phone} onChange={(v) => set('phone', v)} />
+              <div className="checkout-step-copy">
+                <h2>Datos de contacto y envío</h2>
+                <p>Completa tus datos en una sola vista para hacer el proceso más rápido y claro.</p>
+              </div>
+
+              <div className="checkout-card">
+                <div className="checkout-card-head">
+                  <div>
+                    <h3>Información del cliente</h3>
+                    <p>Usaremos estos datos para enviarte la confirmación y contactarte si es necesario.</p>
+                  </div>
+                </div>
+                <div className="checkout-grid">
+                  <Field label="Nombre" value={form.firstName} onChange={(v) => set('firstName', v)} placeholder="Tu nombre" autoComplete="given-name" required />
+                  <Field label="Apellido" value={form.lastName} onChange={(v) => set('lastName', v)} placeholder="Tu apellido" autoComplete="family-name" required />
+                  <Field label="Correo" type="email" value={form.email} onChange={(v) => set('email', v)} placeholder="correo@ejemplo.com" autoComplete="email" required />
+                  <Field label="Teléfono" value={form.phone} onChange={(v) => set('phone', v)} placeholder="Tu teléfono" autoComplete="tel" inputMode="tel" required />
+                </div>
+              </div>
+
+              <div className="checkout-card">
+                <div className="checkout-card-head">
+                  <div>
+                    <h3>Dirección de envío</h3>
+                    <p>Indica dónde quieres recibir tu pedido.</p>
+                  </div>
+                </div>
+
+                {usingSaved && savedAddress && (
+                  <div className="checkout-banner">
+                    <span>Usamos tu última dirección guardada.</span>
+                    <button
+                      type="button"
+                      className="text-link checkout-banner-action"
+                      onClick={discardSavedAddress}
+                    >
+                      Usar otra
+                    </button>
+                  </div>
+                )}
+
+                <div className="checkout-grid">
+                  <Field label="Destinatario" value={form.recipient} onChange={(v) => set('recipient', v)} placeholder="Nombre de quien recibe" autoComplete="shipping name" required />
+                  <Field label="Teléfono de entrega" value={form.phone} onChange={(v) => set('phone', v)} placeholder="Número de contacto" autoComplete="shipping tel" inputMode="tel" required />
+                  <Field label="Dirección" value={form.line1} onChange={(v) => set('line1', v)} placeholder="Calle, carrera, número" autoComplete="shipping address-line1" required className="field-span-2" />
+                  <Field label="Apartamento o complemento (opcional)" value={form.line2} onChange={(v) => set('line2', v)} placeholder="Apto, casa, torre, interior" autoComplete="shipping address-line2" className="field-span-2" />
+                  <Field label="Ciudad" value={form.city} onChange={(v) => set('city', v)} placeholder="Ciudad" autoComplete="shipping address-level2" required />
+                  <Field label="Departamento" value={form.state} onChange={(v) => set('state', v)} placeholder="Departamento" autoComplete="shipping address-level1" required />
+                  <Field
+                    label="Código postal (opcional)"
+                    value={form.postal_code}
+                    onChange={(v) => set('postal_code', v)}
+                    inputMode="numeric"
+                    placeholder="Ej. 050001"
+                    autoComplete="shipping postal-code"
+                    hint="Si lo escribes, debe tener 6 dígitos."
+                    error={!postalCodeValid ? 'Escribe los 6 dígitos del código postal de Colombia o deja el campo vacío.' : ''}
+                  />
+                </div>
+                {invalidSavedPostalCode && (
+                  <p role="status" className="checkout-note">
+                    La dirección guardada tenía un código postal inválido. Lo dejamos vacío porque es opcional.
+                  </p>
+                )}
+                <label className="checkout-field field-span-2">
+                  <span>Instrucciones de entrega</span>
+                  <textarea
+                    className="field checkout-textarea"
+                    placeholder="Ej. Portería, torre, horario preferido o indicaciones adicionales (opcional)"
+                    value={form.instructions}
+                    onChange={(e) => set('instructions', e.target.value)}
+                    rows={4}
+                  />
+                </label>
+              </div>
             </div>
           )}
 
           {step === 1 && (
             <div className="checkout-step">
-              <h2>Dirección de envío</h2>
-
-              {usingSaved && savedAddress && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 10,
-                    background: 'var(--lime-light)',
-                    border: '1px solid var(--lime)',
-                    borderRadius: 10,
-                    padding: '10px 14px',
-                    marginBottom: 14,
-                    fontSize: 13
-                  }}
-                >
-                  <span>Usamos tu última dirección guardada.</span>
-                  <button
-                    type="button"
-                    className="text-link"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13 }}
-                    onClick={discardSavedAddress}
-                  >
-                    Usar otra
-                  </button>
-                </div>
-              )}
-
-              <Field label="Destinatario" value={form.recipient} onChange={(v) => set('recipient', v)} />
-              <Field label="Dirección" value={form.line1} onChange={(v) => set('line1', v)} />
-              <Field label="Apartamento (opcional)" value={form.line2} onChange={(v) => set('line2', v)} />
-              <Field label="Ciudad" value={form.city} onChange={(v) => set('city', v)} />
-              <Field label="Departamento" value={form.state} onChange={(v) => set('state', v)} />
-              <Field label="Código postal (opcional)" value={form.postal_code} onChange={(v) => set('postal_code', v)} />
-              <textarea
-                className="field"
-                placeholder="Instrucciones de entrega (opcional)"
-                value={form.instructions}
-                onChange={(e) => set('instructions', e.target.value)}
-              />
+              <div className="checkout-step-copy">
+                <h2>Selecciona tu método de envío</h2>
+                <p>Elige la opción que más te convenga para recibir tu pedido.</p>
+              </div>
+              <div className="checkout-card checkout-methods">
+                {shippingMethods.length === 0 ? (
+                  <p style={{ color: 'var(--danger)' }}>No hay métodos de envío disponibles. Actualiza la página o contacta a la tienda.</p>
+                ) : (
+                  shippingMethods.map((m) => (
+                    <label key={m.id} className="ship-option">
+                      <input
+                        type="radio"
+                        name="method"
+                        value={m.id}
+                        checked={String(form.methodId) === String(m.id)}
+                        onChange={() => set('methodId', m.id)}
+                      />
+                      <div>
+                        <strong>{m.name}</strong>
+                        <span>{m.description}</span>
+                      </div>
+                      <span>{money(Number(m.cost || 0))}</span>
+                    </label>
+                  ))
+                )}
+              </div>
             </div>
           )}
 
           {step === 2 && (
             <div className="checkout-step">
-              <h2>Método de envío</h2>
-              {shippingMethods.length === 0 ? (
-                <p style={{ color: 'var(--mid)' }}>Cargando métodos…</p>
-              ) : (
-                shippingMethods.map((m) => (
-                  <label key={m.id} className="ship-option">
-                    <input
-                      type="radio"
-                      name="method"
-                      value={m.id}
-                      checked={form.methodId === m.id}
-                      onChange={() => set('methodId', m.id)}
-                    />
-                    <div>
-                      <strong>{m.name}</strong>
-                      <span>{m.description}</span>
-                    </div>
-                    <span>{money(Number(m.cost || 0))}</span>
-                  </label>
-                ))
-              )}
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="checkout-step">
               <h2>Confirmar pedido</h2>
               {wompiMode ? (
                 <>
                   <p style={{ color: 'var(--mid)', fontSize: 13, marginBottom: 14 }}>
-                    Elige cómo vas a pagar con Wompi. Te redirigiremos a su plataforma segura.
+                    En celular irás a la página segura de Wompi, sin ventanas emergentes.
+                    En computadora se abrirá el widget. Allí eliges cómo pagar
+                    (tarjeta, PSE, Nequi o Bancolombia).
                   </p>
-                  {wompiMethods.map((v) => {
-                    const m = methodLabel(v);
-                    return (
-                      <label
-                        key={v}
-                        className="ship-option"
-                        style={{ marginBottom: 8 }}
-                      >
-                        <input
-                          type="radio"
-                          name="paymentMethod"
-                          value={v}
-                          checked={form.paymentMethod === v}
-                          onChange={() => set('paymentMethod', v)}
-                        />
-                        <div>
-                          <strong>
-                            <span style={{ marginRight: 8 }}>{m.icon}</span>
-                            {m.label}
-                          </strong>
-                        </div>
-                      </label>
-                    );
-                  })}
                   {paymentConfig?.sandbox && (
                     <p
                       style={{
@@ -397,8 +585,7 @@ export default function CheckoutPage() {
                         padding: '8px 14px',
                         borderRadius: 8,
                         fontSize: 12,
-                        fontWeight: 600,
-                        marginTop: 10
+                        fontWeight: 600
                       }}
                     >
                       Modo sandbox — usa las tarjetas de prueba de Wompi
@@ -474,13 +661,12 @@ export default function CheckoutPage() {
                 ← Volver
               </button>
             )}
-            {step < 3 ? (
+            {step < 2 ? (
               <button
                 className="btn"
                 disabled={
-                  (step === 0 && !infoValid) ||
-                  (step === 1 && !addrValid) ||
-                  (step === 2 && !methodValid)
+                  (step === 0 && !(infoValid && addrValid)) ||
+                  (step === 1 && !methodValid)
                 }
                 onClick={() => setStep(step + 1)}
               >
@@ -521,10 +707,10 @@ export default function CheckoutPage() {
               <span>Subtotal</span>
               <span>{money(cart.subtotal())}</span>
             </div>
-            {cart.discount > 0 && (
+            {(cart.discount > 0 || shippingDiscount > 0) && (
               <div className="cs-row">
                 <span>Descuento</span>
-                <span style={{ color: 'var(--teal)' }}>−{money(cart.discount)}</span>
+                <span style={{ color: 'var(--teal)' }}>−{money(Number(cart.discount || 0) + shippingDiscount)}</span>
               </div>
             )}
             <div className="cs-row">
@@ -536,31 +722,60 @@ export default function CheckoutPage() {
             <div className="cs-total">
               <span>Total</span>
               <strong>
-                {quote
-                  ? money((cart.total || cart.subtotal()) + (quote.free ? 0 : quote.cost))
-                  : money(cart.total || cart.subtotal())}
+                {money(displayTotal)}
               </strong>
             </div>
           </div>
-          <Link to="/cart" className="text-link">
-            ← Volver al carrito
-          </Link>
+          {paymentPending && wompiMode ? (
+            <button
+              type="button"
+              className="text-link"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              onClick={() => navigate('/cart')}
+            >
+              ← Volver al carrito (pago sin confirmar)
+            </button>
+          ) : (
+            <Link to="/cart" className="text-link">
+              ← Volver al carrito
+            </Link>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function Field({ label, value, onChange, type = 'text' }) {
+function Field({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  inputMode,
+  placeholder = '',
+  autoComplete,
+  hint = '',
+  error = '',
+  required = false,
+  className = ''
+}) {
   return (
-    <label className="checkout-field">
-      <span>{label}</span>
+    <label className={`checkout-field ${className}`.trim()}>
+      <span>
+        {label}
+        {required ? <em>*</em> : null}
+      </span>
       <input
-        className="field"
+        className={`field ${error ? 'field-error' : ''}`.trim()}
         type={type}
+        inputMode={inputMode}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
+      {hint && !error ? <small className="checkout-hint">{hint}</small> : null}
+      {error ? <small role="alert" className="checkout-error">{error}</small> : null}
     </label>
   );
 }

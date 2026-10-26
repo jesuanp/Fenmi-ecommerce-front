@@ -494,3 +494,21 @@
     display: none;
   }
 }
+.status-badge.pending_payment,
+.status-badge.refund_pending {
+  background: #fff3cd;
+  color: #8a6d3b;
+}
+.status-badge.processing,
+.status-badge.shipped {
+  background: #e4f2f6;
+  color: #205e72;
+}
+.status-badge.paid_stock_issue {
+  background: #fde8e4;
+  color: #a53626;
+}
+.status-badge.refunded {
+  background: #e9edef;
+  color: #53606a;
+}

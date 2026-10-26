@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import useAuth from '@/stores/auth';
 import useUI from '@/stores/ui';
@@ -6,21 +6,13 @@ import { orderApi } from '@/services/orders';
 import { returnsApi } from '@/services/returns';
 import { money } from '@/services/settings';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { orderStatusLabel, orderStage, trackedShipments, shipmentStatusLabel } from '@/utils/orderDisplay';
 
-const STATUS_LABELS = {
-  PENDING_PAYMENT: 'Pendiente de pago',
-  PAID: 'Pagado',
-  PROCESSING: 'Preparando pedido',
-  SHIPPED: 'Enviado',
-  DELIVERED: 'Entregado',
-  CANCELLED: 'Cancelado',
-  REFUNDED: 'Reembolsado'
-};
-
-const RETURNABLE = ['PAID', 'SHIPPED', 'DELIVERED'];
+const RETURNABLE = ['PAID', 'PAID_STOCK_ISSUE', 'SHIPPED', 'DELIVERED'];
 const RETURN_STATUS_LABELS = {
   PENDING: 'En revisión',
-  APPROVED: 'Aprobada',
+  PROCESSING: 'Reembolso solicitado',
+  APPROVED: 'Reembolso confirmado',
   REJECTED: 'Rechazada'
 };
 
@@ -74,17 +66,6 @@ export default function AccountOrderDetailPage() {
   }
   if (!order) return <p style={{ padding: 40, color: 'var(--mid)' }}>Cargando…</p>;
 
-  const cancel = async () => {
-    if (!window.confirm('¿Seguro que quieres cancelar este pedido?')) return;
-    try {
-      const updated = await orderApi.cancel(order.id);
-      setOrder(updated);
-      ui.showToast('Pedido cancelado');
-    } catch {
-      ui.showToast('No se pudo cancelar el pedido');
-    }
-  };
-
   const canRequestReturn =
     auth.status === 'authenticated' &&
     RETURNABLE.includes(order.status) &&
@@ -111,17 +92,26 @@ export default function AccountOrderDetailPage() {
     }
   };
 
+  const stage = orderStage(order);
+  const tracking = trackedShipments(order);
+
   return (
-    <div className="container" style={{ padding: '56px 56px 72px', maxWidth: 980 }}>
+    <div className="container" style={{ padding: 'clamp(24px, 5vw, 56px) clamp(16px, 5vw, 56px) 72px', maxWidth: 980 }}>
       <div className="account-head">
         <div>
           <h1 className="page-title">{order.orderNumber}</h1>
           <p style={{ color: 'var(--mid)', fontSize: 13 }}>
             {new Date(order.createdAt).toLocaleString('es-CO')} ·{' '}
-            <span className={'status-badge ' + order.status.toLowerCase()}>{STATUS_LABELS[order.status] || order.status}</span>
+            <span className={'status-badge ' + order.status.toLowerCase()}>{orderStatusLabel(order.status)}</span>
           </p>
         </div>
         <Link to="/account/orders" className="btn-sm">← Mis pedidos</Link>
+      </div>
+
+      <div className="admin-card detail-section" style={{ marginBottom: 18 }}>
+        <h3>Estado de tu pedido</h3>
+        <p style={{ fontWeight: 700, marginTop: 8 }}>{stage.heading}</p>
+        <p style={{ color: 'var(--mid)', fontSize: 13, lineHeight: 1.6 }}>{stage.description}</p>
       </div>
 
       {existingReturn && (
@@ -154,7 +144,7 @@ export default function AccountOrderDetailPage() {
 
       <div className="detail-grid">
         <div className="admin-card detail-section">
-          <h3>Envío</h3>
+          <h3>Dirección y método de entrega</h3>
           <p>{order.shipping?.recipient}</p>
           <p>{order.shipping?.line1} {order.shipping?.line2 || ''}</p>
           <p>{order.shipping?.city}, {order.shipping?.state} ({order.shipping?.country})</p>
@@ -171,11 +161,6 @@ export default function AccountOrderDetailPage() {
             <div className="detail-item"><span>Envío</span><span>{money(order.shippingTotal)}</span></div>
             <div className="detail-item"><strong>Total</strong><strong>{money(order.grandTotal)}</strong></div>
           </div>
-          {order.status === 'PENDING_PAYMENT' && (
-            <button className="btn outline small" style={{ marginTop: 12, color: 'var(--danger)' }} onClick={cancel}>
-              Cancelar pedido
-            </button>
-          )}
           {canRequestReturn && (
             <button className="btn outline small" style={{ marginTop: 12 }} onClick={() => setModalOpen(true)}>
               Solicitar devolución
@@ -183,6 +168,24 @@ export default function AccountOrderDetailPage() {
           )}
         </div>
       </div>
+
+      {tracking.length > 0 && (
+        <div className="admin-card detail-section">
+          <h3>Seguimiento de envío</h3>
+          {tracking.map((shipment) => (
+            <div key={shipment.id} style={{ marginBottom: 12 }}>
+              <p><strong>{shipmentStatusLabel(shipment.status)}</strong></p>
+              {shipment.carrier && <p>Transportadora: {shipment.carrier}</p>}
+              {shipment.trackingNumber ? (
+                <p>Guía de seguimiento: <strong>{shipment.trackingNumber}</strong></p>
+              ) : (
+                <p style={{ color: 'var(--mid)', fontSize: 13 }}>La guía aún no está registrada.</p>
+              )}
+              {shipment.deliveredAt && <p>Entregado: {new Date(shipment.deliveredAt).toLocaleString('es-CO')}</p>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="admin-card detail-section">
         <h3>Productos</h3>
@@ -205,7 +208,7 @@ export default function AccountOrderDetailPage() {
           <div className="detail-items">
             {order.statusHistory.map((h, idx) => (
               <div className="detail-item" key={idx}>
-                <span>{h.from || 'Inicio'} → <strong>{STATUS_LABELS[h.to] || h.to}</strong></span>
+                <span>{h.from ? orderStatusLabel(h.from) : 'Inicio'} → <strong>{orderStatusLabel(h.to)}</strong></span>
                 <span>{new Date(h.createdAt).toLocaleString('es-CO')}</span>
               </div>
             ))}
