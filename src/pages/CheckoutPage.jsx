@@ -47,6 +47,8 @@ export default function CheckoutPage() {
   const [quote, setQuote] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [paymentPending, setPaymentPending] = useState(false);
+  const [previousCheckout, setPreviousCheckout] = useState(null);
+  const [recoveringCheckout, setRecoveringCheckout] = useState(false);
   const submittingRef = useRef(false);
   const watcherRef = useRef(null);
 
@@ -228,6 +230,15 @@ export default function CheckoutPage() {
   const contractsAccepted = !wompiMode || (acceptTerms && acceptPrivacy);
   const wompiReady = contractsAccepted;
 
+  useEffect(() => {
+    if (!wompiMode || !cart.hydrated || cart.items.length === 0) return undefined;
+    let active = true;
+    orderApi.pendingCheckout()
+      .then((result) => { if (active) setPreviousCheckout(result); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [wompiMode, cart.hydrated, cart.items.length]);
+
   // Recalcular quote cuando cambia método o subtotal.
   useEffect(() => {
     if (!form.methodId || cart.items.length === 0) return;
@@ -244,6 +255,123 @@ export default function CheckoutPage() {
 
   const shippingDiscount = cart.coupon?.type === 'FREE_SHIPPING' && quote ? Number(quote.cost || 0) : 0;
   const displayTotal = Math.max(0, Number(cart.subtotal() || 0) + Number(quote?.cost || 0) - Number(cart.discount || 0) - shippingDiscount);
+
+  const showPreviousCheckout = async () => {
+    const result = await orderApi.pendingCheckout();
+    setPreviousCheckout(result);
+    return result;
+  };
+
+  const openWompiCheckout = async (order, widget, fingerprint) => {
+    const webCheckout = shouldUseWompiWebCheckout();
+    if (!webCheckout) await loadWompiWidget();
+    if (!widget?.publicKey || !widget?.integritySignature) {
+      throw new Error('Configuración de pago incompleta.');
+    }
+    const mobileCheckoutUrl = webCheckout ? buildWompiWebCheckoutUrl(widget) : null;
+    if (!webCheckout && typeof window.WidgetCheckout !== 'function') {
+      throw new Error('El widget de Wompi no cargó. Revisa tu conexión.');
+    }
+
+    savePendingPayment({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      provider: 'wompi',
+      widget,
+      fingerprint
+    });
+
+    setPreviousCheckout(null);
+    if (mobileCheckoutUrl) {
+      window.location.assign(mobileCheckoutUrl);
+      return;
+    }
+
+    const checkout = new window.WidgetCheckout({
+      publicKey: widget.publicKey,
+      currency: widget.currency,
+      amountInCents: widget.amountInCents,
+      reference: widget.reference,
+      redirectUrl: widget.redirectUrl,
+      signature: { integrity: widget.integritySignature }
+    });
+
+    setPaymentPending(true);
+    watcherRef.current = watchWompiWidgetClose(() => {
+      watcherRef.current = null;
+      setPaymentPending(false);
+    });
+
+    try {
+      checkout.open((result) => {
+        stopWatchingWidget();
+        setPaymentPending(false);
+        const tx = result?.transaction || {};
+        const status = String(tx.status || '').toUpperCase();
+        wlog('callback del widget →', { status });
+        if (!status) {
+          ui.showToast('Pago no confirmado. Tus productos permanecen en el carrito.');
+          return;
+        }
+        navigate(`/checkout/success/${order.orderNumber}`, {
+          state: { orderId: order.id, provider: 'wompi', wompiTx: tx }
+        });
+      });
+    } catch (error) {
+      stopWatchingWidget();
+      setPaymentPending(false);
+      throw error;
+    }
+  };
+
+  const resumePreviousCheckout = async () => {
+    if (!previousCheckout || recoveringCheckout) return;
+    setRecoveringCheckout(true);
+    try {
+      if (previousCheckout.hasProviderReference) {
+        const verification = await paymentApi.verify('wompi', previousCheckout.orderNumber);
+        if (verification.confirmed || verification.status === 'APPROVED') {
+          navigate(`/checkout/success/${previousCheckout.orderNumber}`, { state: { provider: 'wompi' } });
+          return;
+        }
+        if (verification.verification === 'UNAVAILABLE') {
+          ui.showToast('No se pudo comprobar el pago anterior con Wompi. Intenta nuevamente más tarde.');
+          return;
+        }
+      }
+      const result = await orderApi.resumePending(previousCheckout.orderId);
+      await openWompiCheckout(
+        { id: previousCheckout.orderId, orderNumber: previousCheckout.orderNumber },
+        result.widget,
+        readPendingPayment()?.orderId === previousCheckout.orderId ? readPendingPayment()?.fingerprint : null
+      );
+    } catch (err) {
+      ui.showToast(err.response?.data?.error?.message || err.message || 'No se pudo recuperar el pago anterior.');
+      await showPreviousCheckout().catch(() => {});
+    } finally {
+      setRecoveringCheckout(false);
+    }
+  };
+
+  const releasePreviousCheckout = async () => {
+    if (!previousCheckout || recoveringCheckout) return;
+    const accepted = window.confirm('¿Quieres descartar el pedido anterior? Comprobaremos que Wompi no tenga un pago aprobado ni en proceso. Los productos seguirán en el carrito.');
+    if (!accepted) return;
+    setRecoveringCheckout(true);
+    try {
+      await orderApi.releasePending(previousCheckout.orderId);
+      if (readPendingPayment()?.orderId === previousCheckout.orderId) clearPendingPayment();
+      setPreviousCheckout(null);
+      await cart.hydrate();
+      ui.showToast('Intento anterior liberado. Comprueba tus datos y vuelve a pagar.');
+      setStep(0);
+    } catch (err) {
+      ui.showToast(err.response?.data?.error?.message || 'No se pudo liberar el intento. Comprueba el estado del pago.');
+      await showPreviousCheckout().catch(() => {});
+    } finally {
+      setRecoveringCheckout(false);
+    }
+  };
 
   const submitOrder = async () => {
     if (submittingRef.current) return;
@@ -307,12 +435,13 @@ export default function CheckoutPage() {
               return;
             }
             if (action === 'RESTART') {
-              await orderApi.abandon(pending.orderId);
+              await orderApi.releasePending(pending.orderId);
               clearPendingPayment();
               await cart.hydrate();
             } else if (action === 'REUSE') {
               order = { id: pending.orderId, orderNumber: pending.orderNumber };
-              savedWidget = pending.widget || null;
+              const retry = await orderApi.resumePending(pending.orderId);
+              savedWidget = retry.widget;
             }
           } else {
             const previous = await paymentApi.verify('wompi', pending.orderNumber);
@@ -321,11 +450,12 @@ export default function CheckoutPage() {
               return;
             }
             if (['DECLINED', 'FAILED', 'VOIDED'].includes(previous.status)) {
-              await orderApi.abandon(pending.orderId);
+              await orderApi.releasePending(pending.orderId);
               clearPendingPayment();
               await cart.hydrate();
             } else {
-              ui.showToast('Hay un pago anterior sin confirmar. Comprueba ese intento antes de modificar la compra para evitar dos cobros.');
+              await showPreviousCheckout();
+              ui.showToast('Encontramos un intento anterior. Puedes reanudarlo o comprobar si es posible descartarlo.');
               return;
             }
           }
@@ -338,66 +468,9 @@ export default function CheckoutPage() {
       }
 
       if (wompiMode) {
-        const webCheckout = shouldUseWompiWebCheckout();
-        if (!webCheckout) await loadWompiWidget();
         const pay = savedWidget ? null : await paymentApi.create(order.id);
-        const w = savedWidget || pay?.widget;
-        if (!w?.publicKey || !w?.integritySignature) {
-          throw new Error('Configuración de pago incompleta.');
-        }
-        const mobileCheckoutUrl = webCheckout ? buildWompiWebCheckoutUrl(w) : null;
-        if (!webCheckout && typeof window.WidgetCheckout !== 'function') {
-          throw new Error('El widget de Wompi no cargó. Revisa tu conexión.');
-        }
-
-        savePendingPayment({
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          provider: 'wompi',
-          widget: w,
-          fingerprint
-        });
-
-        if (mobileCheckoutUrl) {
-          window.location.assign(mobileCheckoutUrl);
-          return;
-        }
-
-        const checkout = new window.WidgetCheckout({
-          publicKey: w.publicKey,
-          currency: w.currency,
-          amountInCents: w.amountInCents,
-          reference: w.reference,
-          redirectUrl: w.redirectUrl,
-          signature: { integrity: w.integritySignature }
-        });
-
-        setPaymentPending(true);
-        watcherRef.current = watchWompiWidgetClose(() => {
-          watcherRef.current = null;
-          setPaymentPending(false);
-        });
-
-        try {
-          checkout.open((result) => {
-            stopWatchingWidget();
-            setPaymentPending(false);
-            const tx = result?.transaction || {};
-            const status = String(tx.status || '').toUpperCase();
-            wlog('callback del widget →', { status });
-            if (!status) {
-              ui.showToast('Pago no confirmado. Tus productos permanecen en el carrito.');
-              return;
-            }
-            navigate(`/checkout/success/${order.orderNumber}`, {
-              state: { orderId: order.id, provider: 'wompi', wompiTx: tx }
-            });
-          });
-        } catch (error) {
-          stopWatchingWidget();
-          setPaymentPending(false);
-          throw error;
-        }
+        const widget = savedWidget || pay?.widget;
+        await openWompiCheckout(order, widget, fingerprint);
         return;
       }
       // Pago manual sin pedido visible en la cuenta hasta su aprobación.
@@ -413,7 +486,7 @@ export default function CheckoutPage() {
       // carrito del cliente vuelva a tener sus artículos y pueda reintentar.
       if (createdOrderId) {
         try {
-          await orderApi.abandon(createdOrderId);
+          await orderApi.releasePending(createdOrderId);
           if (readPendingPayment()?.orderId === createdOrderId) clearPendingPayment();
           await cart.hydrate();
         } catch {
@@ -432,6 +505,12 @@ export default function CheckoutPage() {
       });
 
       const e = err.response?.data?.error || {};
+      if (e.code === 'CHECKOUT_PENDING_ORDER') {
+        await showPreviousCheckout().catch(() => {});
+        setStep(2);
+        ui.showToast('Encontramos un pedido anterior. Revisa las opciones para continuar de forma segura.');
+        return;
+      }
       const details = Array.isArray(e.details) ? e.details : [];
       const list = details
         .map((d) => `${(d.path || d.field || []).join('.')}: ${d.message}`)
@@ -452,6 +531,39 @@ export default function CheckoutPage() {
         Finalizar compra
       </h1>
       <CheckoutSteps current={step} steps={STEPS} />
+
+      {wompiMode && previousCheckout && (
+        <section className="checkout-recovery" role="region" aria-label="Intento de pago anterior">
+          <div className="checkout-recovery-info">
+            <strong>Hay una compra anterior sin confirmar</strong>
+            <p>
+              Referencia <b>{previousCheckout.orderNumber}</b> · Importe <b>{money(previousCheckout.amount)}</b>.
+              El pedido anterior puede tener productos o datos de envío diferentes de los que ves ahora.
+            </p>
+            {previousCheckout.items?.length > 0 && (
+              <p className="checkout-recovery-items">
+                {previousCheckout.items.map((item) => `${item.quantity} × ${item.name}`).join(' · ')}
+              </p>
+            )}
+            <p>{previousCheckout.hasProviderReference
+              ? 'No hemos marcado este pedido como pagado. Comprueba su estado o recupera el pago anterior.'
+              : 'El intento quedó registrado antes de abrir Wompi. Puedes reabrirlo o liberarlo tras verificar que no haya un cobro.'}</p>
+          </div>
+          <div className="checkout-recovery-actions">
+            <button type="button" className="btn lime" disabled={recoveringCheckout} onClick={resumePreviousCheckout}>
+              {recoveringCheckout ? 'Comprobando…' : 'Reabrir pago anterior'}
+            </button>
+            <button type="button" className="btn outline" disabled={recoveringCheckout} onClick={releasePreviousCheckout}>
+              Descartar intento anterior
+            </button>
+            {previousCheckout.hasProviderReference && (
+              <button type="button" className="text-link checkout-recovery-link" onClick={() => navigate(`/checkout/success/${previousCheckout.orderNumber}`, { state: { provider: 'wompi' } })}>
+                Comprobar estado del pago
+              </button>
+            )}
+          </div>
+        </section>
+      )}
 
       <div className="checkout-layout">
         {/* ── Stepper content ── */}
@@ -675,7 +787,7 @@ export default function CheckoutPage() {
             ) : (
               <button
                 className="btn lime block"
-                disabled={submitting || (wompiMode && !wompiReady)}
+                disabled={submitting || recoveringCheckout || Boolean(wompiMode && previousCheckout) || (wompiMode && !wompiReady)}
                 onClick={submitOrder}
               >
                 {submitting

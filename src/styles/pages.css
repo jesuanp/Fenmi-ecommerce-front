@@ -5,16 +5,14 @@
   flex-direction: column;
 }
 
-/* Páginas con header opaco (no homepage/hero) — espaciado para el header fixed */
-.container.catalog-container,
-.catalog-container,
-.product-detail,
-.cart-page,
-.checkout-page,
-.account-page,
-.page-with-header,
-.page-container {
-  padding-top: var(--header-height, 64px) !important;
+.site > .public-main {
+  flex: 1;
+  min-width: 0;
+  padding-top: var(--header-height);
+}
+
+.site > .public-main--home {
+  padding-top: 0;
 }
 
 /* Hero */
@@ -2583,6 +2581,68 @@
   }
   .checkout-nav .btn {
     min-width: 0;
+    width: 100%;
+  }
+}
+
+.checkout-recovery {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  padding: 20px 22px;
+  margin: 0 0 24px;
+  border: 1px solid #e1c381;
+  background: #fffaf0;
+  border-radius: var(--radius);
+}
+.checkout-recovery-info strong {
+  display: block;
+  color: #483511;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.checkout-recovery-info p {
+  color: #604f2a;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 5px 0;
+}
+.checkout-recovery-info .checkout-recovery-items {
+  font-size: 12px;
+  font-weight: 600;
+}
+.checkout-recovery-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+}
+.checkout-recovery-actions .btn {
+  min-height: 42px;
+  padding: 8px 16px;
+  text-align: center;
+  letter-spacing: 0.06em;
+}
+.checkout-recovery-link {
+  cursor: pointer;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  width: fit-content;
+  justify-self: center;
+  padding: 6px 2px;
+  color: var(--dark);
+}
+@media (max-width: 820px) {
+  .checkout-recovery {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+  .checkout-recovery-actions {
+    min-width: 0;
+  }
+  .checkout-recovery-actions .btn,
+  .checkout-recovery-link {
     width: 100%;
   }
 }

@@ -126,7 +126,7 @@ export default function CheckoutSuccessPage() {
     }
     setRetrying(true);
     try {
-      await orderApi.abandon(orderId);
+      await orderApi.releasePending(orderId);
       if (readPendingPayment()?.orderNumber === orderNumber) clearPendingPayment();
       await cart.hydrate();
       navigate('/checkout');
