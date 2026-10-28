@@ -5,7 +5,7 @@ export const orderApi = {
     return (await client.post('/orders', payload)).data.data;
   },
   async pendingCheckout() {
-    return (await client.get('/orders/pending-checkout')).data.data;
+    return (await client.get('/orders/pending-checkout', { params: { _t: Date.now() } })).data.data;
   },
   async resumePending(id) {
     return (await client.post(`/orders/${id}/resume-pending`)).data.data;

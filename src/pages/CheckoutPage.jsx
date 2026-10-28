@@ -11,6 +11,7 @@ import useAuth from '@/stores/auth';
 import { isOptionalPostalCodeValid, normalizeSavedPostalCode } from '@/utils/postalCode';
 import { CHECKOUT_PROFILE_FIELDS, CHECKOUT_ADDRESS_FIELDS, fillEmptyCheckoutFields } from '@/utils/checkoutAutofill';
 import { checkoutFingerprint, decideWompiRetry } from '@/utils/checkoutRetry';
+import { comparePendingCheckout, canRequestStaleRelease } from '@/utils/pendingCheckoutSync';
 import { isWompiWidgetVisible, watchWompiWidgetClose } from '@/utils/wompiWidget';
 import { loadWompiWidget } from '@/utils/loadWompi';
 import { buildWompiWebCheckoutUrl, shouldUseWompiWebCheckout, shouldPreferHostedWompiCheckout } from '@/utils/wompiWebCheckout';
@@ -430,7 +431,31 @@ export default function CheckoutPage() {
       if (wompiMode) {
         const pending = readPendingPayment();
         if (pending?.orderId && pending?.orderNumber && pending.provider === 'wompi') {
-          if (pending.fingerprint === fingerprint) {
+          const serverPending = await orderApi.pendingCheckout();
+          const relation = comparePendingCheckout(pending, serverPending);
+          if (relation === 'DIFFERENT') {
+            setPreviousCheckout(serverPending);
+            setStep(2);
+            ui.showToast('Tu carrito tiene otro intento pendiente. Revisa la compra anterior antes de continuar.');
+            return;
+          }
+          if (relation === 'NO_SERVER') {
+            const verification = await paymentApi.verify('wompi', pending.orderNumber);
+            if (verification?.confirmed || verification?.status === 'APPROVED') {
+              navigate(`/checkout/success/${pending.orderNumber}`, { replace: true });
+              return;
+            }
+            if (canRequestStaleRelease(verification)) {
+              await orderApi.releasePending(pending.orderId);
+              clearPendingPayment();
+              setPreviousCheckout(null);
+              await cart.hydrate();
+              ui.showToast('El intento anterior ya estaba cancelado. Puedes iniciar un pago nuevo.');
+            } else {
+              ui.showToast('El intento anterior no aparece en el carrito actual, pero su pago no está confirmado. No abriremos otro cobro hasta verificarlo.');
+              return;
+            }
+          } else if (pending.fingerprint === fingerprint) {
             const status = await paymentApi.verify('wompi', pending.orderNumber);
             const action = decideWompiRetry(pending, fingerprint, status?.status);
             if (action === 'APPROVED') {
@@ -520,6 +545,11 @@ export default function CheckoutPage() {
         ui.showToast('Encontramos un pedido anterior. Revisa las opciones para continuar de forma segura.');
         return;
       }
+      if (e.code === 'CHECKOUT_PENDING_NOT_FOUND') {
+        await showPreviousCheckout().catch(() => {});
+        ui.showToast('El intento guardado cambió de estado. Revisa el carrito y consulta el pago anterior antes de reintentar.');
+        return;
+      }
       const details = Array.isArray(e.details) ? e.details : [];
       const list = details
         .map((d) => `${(d.path || d.field || []).join('.')}: ${d.message}`)
@@ -554,12 +584,14 @@ export default function CheckoutPage() {
                 {previousCheckout.items.map((item) => `${item.quantity} × ${item.name}`).join(' · ')}
               </p>
             )}
-            <p>{previousCheckout.hasProviderReference
+            <p>{!previousCheckout.canResume
+              ? 'Este intento pertenece a un carrito anterior o ya venció. Comprueba su estado y descártalo solo si Wompi confirma que no hay un pago activo.'
+              : previousCheckout.hasProviderReference
               ? 'No hemos marcado este pedido como pagado. Comprueba su estado o recupera el pago anterior.'
               : 'El intento quedó registrado antes de abrir Wompi. Puedes reabrirlo o liberarlo tras verificar que no haya un cobro.'}</p>
           </div>
           <div className="checkout-recovery-actions">
-            <button type="button" className="btn lime" disabled={recoveringCheckout} onClick={resumePreviousCheckout}>
+            <button type="button" className="btn lime" disabled={recoveringCheckout || !previousCheckout.canResume} onClick={resumePreviousCheckout}>
               {recoveringCheckout ? 'Comprobando…' : 'Reabrir pago anterior'}
             </button>
             <button type="button" className="btn outline" disabled={recoveringCheckout} onClick={releasePreviousCheckout}>
