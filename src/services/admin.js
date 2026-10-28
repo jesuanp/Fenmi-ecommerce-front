@@ -32,6 +32,9 @@ export const adminApi = {
     return client.post('/admin/upload/hero', fd).then((r) => r.data.data);
   },
 
+  listColors: () => client.get('/admin/colors').then((r) => r.data.data),
+  createColor: (body) => client.post('/admin/colors', body).then((r) => r.data.data),
+
   // Categorías y tags
   listCategories: () => client.get('/admin/categories').then((r) => r.data.data),
   createCategory: (b) => client.post('/admin/categories', b).then((r) => r.data.data),

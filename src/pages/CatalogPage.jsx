@@ -144,7 +144,7 @@ export default function CatalogPage() {
             </div>
           ) : (
             <div className={'product-grid grid-' + gridCols}>
-              {state.data.data.map((p) => <ProductCard key={p.id} product={p} />)}
+              {state.data.data.map((p, index) => <ProductCard key={p.id} product={p} priority={index < 4} />)}
             </div>
           )}
 

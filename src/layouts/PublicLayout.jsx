@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import React, { useEffect, useLayoutEffect, useState } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import CartDrawer from '@/components/CartDrawer';
@@ -14,6 +14,13 @@ export default function PublicLayout() {
   const auth = useAuth();
   const cart = useCart();
   const wishlist = useWishlist();
+  const { pathname } = useLocation();
+  const [homeHeroAtTop, setHomeHeroAtTop] = useState(false);
+  const showHomeHero = pathname === '/' && homeHeroAtTop;
+
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
 
   // Al montar: hidratar carrito + wishlist (la sesión la restaura SessionBootstrap).
   useEffect(() => {
@@ -37,9 +44,9 @@ export default function PublicLayout() {
 
   return (
     <div className="site">
-      <Header />
-      <main>
-        <Outlet />
+      <Header transparentOnHome={showHomeHero} />
+      <main className={showHomeHero ? 'public-main public-main--home' : 'public-main'}>
+        <Outlet context={{ setHomeHeroAtTop }} />
       </main>
       <Footer />
       <CartDrawer />

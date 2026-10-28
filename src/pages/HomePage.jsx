@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useLayoutEffect, useState } from 'react';
+import { Link, useOutletContext } from 'react-router-dom';
 import settingsApi from '@/services/settings';
 import productApi from '@/services/products';
 import ProductGrid from '@/components/ProductGrid';
@@ -13,36 +13,45 @@ export default function HomePage() {
   const [config, setConfig] = useState(null);
   const [blocksData, setBlocksData] = useState({});
   const [error, setError] = useState(false);
+  const { setHomeHeroAtTop } = useOutletContext();
 
   useEffect(() => {
+    let mounted = true;
     settingsApi
       .get()
       .then((s) => {
+        if (!mounted) return;
         setConfig(s);
-        // Cargar productos de cada bloque que lo necesite.
-        const jobs = {};
         const blocks = s.home?.blocks || [];
-        blocks.forEach((b) => {
-          if (b.products) {
-            jobs[b.type] = productApi
-              .list({
-                ...(b.products.params || {}),
-                sort: b.products.sort,
-                limit: b.products.limit || 4
-              })
-              .then((r) => r.data);
-          }
-        });
-        Promise.all(Object.keys(jobs).map((k) => jobs[k].then((v) => [k, v]))).then((entries) => {
-          const map = {};
-          entries.forEach(([k, v]) => (map[k] = v));
-          setBlocksData(map);
+        blocks.forEach((block) => {
+          if (!block.products) return;
+          productApi
+            .list({
+              ...(block.products.params || {}),
+              sort: block.products.sort,
+              limit: block.products.limit || 4
+            })
+            .then((result) => {
+              if (mounted) setBlocksData((current) => ({ ...current, [block.type]: result.data }));
+            })
+            .catch(() => {
+              if (mounted) setBlocksData((current) => ({ ...current, [block.type]: [] }));
+            });
         });
       })
-      .catch(() => setError(true));
+      .catch(() => {
+        if (mounted) setError(true);
+      });
+    return () => { mounted = false; };
   }, []);
 
   const blocks = config?.home?.blocks || [];
+  const firstBlockType = blocks[0]?.type;
+
+  useLayoutEffect(() => {
+    setHomeHeroAtTop(firstBlockType === 'hero');
+    return () => setHomeHeroAtTop(false);
+  }, [firstBlockType, setHomeHeroAtTop]);
   // eslint-disable-next-line no-unused-vars
   const store = config?.store || { name: 'FENMI' };
 
@@ -87,7 +96,7 @@ function renderBlock(block, data, config) {
         <section className="hero">
           <picture>
             <source media="(max-width: 768px)" srcSet={heroImgV} />
-            <img className="hero-img" src={heroImg} alt="" />
+            <img className="hero-img" src={heroImg} alt="" loading="eager" fetchPriority="high" decoding="async" width="1920" height="1080" />
           </picture>
         </section>
       );

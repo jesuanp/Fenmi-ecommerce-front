@@ -9,7 +9,7 @@ export default function CategoryCard({ category }) {
     >
       <div className="cat-img" style={{ background: 'var(--bg)' }}>
         {category.image_url ? (
-          <img src={category.image_url} alt={category.name} loading="lazy" />
+          <img src={category.image_url} alt={category.name} loading="lazy" decoding="async" width="640" height="360" />
         ) : (
           <span>{category.name}</span>
         )}

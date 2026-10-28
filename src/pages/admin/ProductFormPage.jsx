@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { adminApi } from '@/services/admin';
 import client from '@/services/api';
 import useUI from '@/stores/ui';
+import { MAX_IMAGE_MB, getImageUploadError, prepareImageForUpload, validateImageFile } from '@/utils/imageUpload';
 
 const FIELD_LABELS = {
   name: 'Nombre',
@@ -61,6 +62,10 @@ export default function ProductFormPage() {
   const [tags, setTags] = useState([]);
   const [images, setImages] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadColorId, setUploadColorId] = useState('');
+  const [newColorName, setNewColorName] = useState('');
+  const [newColorHex, setNewColorHex] = useState('#333333');
+  const [creatingColor, setCreatingColor] = useState(false);
   const [loading, setLoading] = useState(editing);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -101,6 +106,11 @@ export default function ProductFormPage() {
     const incompletas = variants.filter((v) => !v.colorId || !v.sizeId).length;
     if (incompletas > 0) {
       return ui.showToast(`Hay ${incompletas} variante(s) sin color o talla. Complétalas o elimínalas antes de guardar.`);
+    }
+    const variantPairs = variants.map((v) => `${v.colorId}-${v.sizeId}`);
+    if (new Set(variantPairs).size !== variantPairs.length) {
+      ui.showToast('No se puede repetir la misma combinación de color y talla.');
+      return;
     }
     const payload = {
       name: form.name,
@@ -147,16 +157,43 @@ export default function ProductFormPage() {
   const setVariant = (idx, k, val) => setVariants((vs) => vs.map((v, i) => (i === idx ? { ...v, [k]: val } : v)));
   const delVariant = (idx) => setVariants((vs) => vs.filter((_, i) => i !== idx));
 
+  const createColor = async () => {
+    if (newColorName.trim().length < 2) {
+      ui.showToast('Escribe un nombre de color de al menos dos caracteres.');
+      return;
+    }
+    setCreatingColor(true);
+    try {
+      const color = await adminApi.createColor({ name: newColorName.trim(), hex: newColorHex });
+      setColors((existing) => [...existing, color].sort((a, b) => a.name.localeCompare(b.name)));
+      setVariants((current) => [...current, { colorId: String(color.id), sizeId: '', stock: 0, priceOverride: '', active: true }]);
+      setUploadColorId(String(color.id));
+      setNewColorName('');
+      ui.showToast(`Color ${color.name} creado. Completa su talla y existencias y guarda el producto.`);
+    } catch (error) {
+      ui.showToast(error.response?.data?.error?.message || 'No se pudo crear el color.');
+    } finally {
+      setCreatingColor(false);
+    }
+  };
+
   const uploadImage = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !editing) return;
+    const error = validateImageFile(file);
+    if (error) {
+      ui.showToast(error);
+      e.target.value = '';
+      return;
+    }
     setUploading(true);
     try {
-      const img = await adminApi.uploadImage(id, file);
+      const prepared = await prepareImageForUpload(file, { maxWidth: 1500, maxHeight: 1800 });
+      const img = await adminApi.uploadImage(id, prepared, uploadColorId || null);
       setImages((imgs) => [...imgs, img]);
-      ui.showToast('Imagen subida');
-    } catch {
-      ui.showToast('No se pudo subir la imagen');
+      ui.showToast('Imagen subida y optimizada.');
+    } catch (error) {
+      ui.showToast(getImageUploadError(error));
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -219,6 +256,32 @@ export default function ProductFormPage() {
             </div>
           ))}
           <button type="button" className="btn-sm" onClick={addVariantRow}>+ Agregar variante</button>
+          <div className="admin-color-creator">
+            <div>
+              <h4>Crear un color nuevo</h4>
+              <p>Agrega un color que no esté en la lista. Después indica la talla y las existencias de esa variante.</p>
+            </div>
+            <div className="admin-color-creator-fields">
+              <label className="afield">
+                <span>Nombre del color</span>
+                <input value={newColorName} maxLength={80} placeholder="Ej. Azul marino" onChange={(e) => setNewColorName(e.target.value)} />
+              </label>
+              <label className="afield admin-color-hex">
+                <span>Tonalidad</span>
+                <input type="color" value={newColorHex} onChange={(e) => setNewColorHex(e.target.value)} aria-label="Elegir tonalidad" />
+              </label>
+              <button type="button" className="btn-sm" disabled={creatingColor || !newColorName.trim()} onClick={createColor}>
+                {creatingColor ? 'Creando…' : '+ Crear color'}
+              </button>
+            </div>
+            <div className="admin-colors-preview" aria-label="Colores disponibles">
+              {colors.map((color) => (
+                <span key={color.id} className="admin-color-chip" title={color.name}>
+                  <i style={{ backgroundColor: color.hex || '#cccccc' }} />{color.name}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="admin-card">
@@ -237,9 +300,12 @@ export default function ProductFormPage() {
           <div className="admin-card">
             <h3 style={{ marginBottom: 14 }}>Imágenes ({images.length})</h3>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              {images.sort((a, b) => a.position - b.position).map((img) => (
+              {images.slice().sort((a, b) => a.position - b.position).map((img) => (
                 <div key={img.id} style={{ position: 'relative', width: 80 }}>
-                  <img src={img.url} alt="" style={{ width: 80, height: 100, objectFit: 'cover', borderRadius: 8 }} />
+                  <img src={img.url} alt="" loading="lazy" decoding="async" style={{ width: 80, height: 100, objectFit: 'cover', borderRadius: 8 }} />
+                  {img.colorId || img.color_id ? (
+                    <small className="admin-image-color">{colors.find((c) => String(c.id) === String(img.colorId || img.color_id))?.name || 'Color'}</small>
+                  ) : null}
                   <button
                     type="button"
                     className="btn-sm danger"
@@ -251,7 +317,23 @@ export default function ProductFormPage() {
                 </div>
               ))}
             </div>
-            <input type="file" accept="image/*" onChange={uploadImage} disabled={uploading} />
+            <div className="admin-upload-fields">
+              <label className="afield">
+                <span>Fotografía de un color (opcional)</span>
+                <select value={uploadColorId} onChange={(e) => setUploadColorId(e.target.value)}>
+                  <option value="">General · todos los colores</option>
+                  {[...new Set(variants.map((v) => String(v.colorId)).filter(Boolean))].map((colorId) => {
+                    const color = colors.find((c) => String(c.id) === colorId);
+                    return color ? <option value={colorId} key={colorId}>{color.name}</option> : null;
+                  })}
+                </select>
+              </label>
+              <label className="afield">
+                <span>Subir imagen (máximo {MAX_IMAGE_MB} MB)</span>
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={uploadImage} disabled={uploading} />
+              </label>
+            </div>
+            <p className="admin-upload-hint">Las nuevas imágenes se comprimen automáticamente. Para fotografías por color, guarda primero las variantes del producto.</p>
             {uploading && <span style={{ fontSize: 12, color: 'var(--mid)' }}> Subiendo…</span>}
           </div>
         )}

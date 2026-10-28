@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom';
 import { money } from '@/services/settings';
 import WishlistButton from '@/components/WishlistButton';
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, priority = false }) {
   const out = !product.inStock;
   const tags = product.tags || [];
   return (
     <Link to={`/products/${product.slug}`} className="product-card">
       <div className={'pic' + (out ? ' out' : '')}>
-        <img decoding="async" loading="lazy" src={product.image} alt={product.name} />
+        <img decoding="async" loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} src={product.image} alt={product.name} width="480" height="600" />
         {out && <span className="pic-badge">Agotado</span>}
         <span className="card-heart"><WishlistButton productId={product.id} size={28} /></span>
       </div>

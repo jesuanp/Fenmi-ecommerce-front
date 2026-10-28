@@ -22,6 +22,7 @@
   --radius-sm: 8px;
   --max: 1440px;
   --shadow: 0 12px 28px rgba(0, 0, 0, 0.07);
+  --header-height: 64px;
 }
 
 *,
@@ -34,6 +35,11 @@
 
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--header-height) + 16px);
+}
+
+:target {
+  scroll-margin-top: calc(var(--header-height) + 16px);
 }
 
 body {

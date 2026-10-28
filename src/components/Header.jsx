@@ -6,7 +6,7 @@ import useUI from '@/stores/ui';
 import useAuth from '@/stores/auth';
 import productApi from '@/services/products';
 
-export default function Header() {
+export default function Header({ transparentOnHome = false }) {
   const cart = useCart();
   const ui = useUI();
   const auth = useAuth();
@@ -75,7 +75,7 @@ export default function Header() {
     };
   }, [catOpen]);
 
-  const headerClass = isHome && !scrolled ? 'header transparent' : 'header';
+  const headerClass = isHome && transparentOnHome && !scrolled ? 'header transparent' : 'header';
 
   return (
     <header className={headerClass}>

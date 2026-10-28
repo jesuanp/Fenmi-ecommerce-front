@@ -63,9 +63,7 @@ export default function ProductPage() {
     setQty(1);
     // Actualiza imagen principal según el color (si hay galería por color).
     const colorImgs = product.imagesByColor?.[`c${selectedColorId}`];
-    if (colorImgs && colorImgs.length > 0) {
-      setMainImg(colorImgs[0]);
-    }
+    setMainImg(colorImgs?.[0] || product.imagesByColor?.default?.[0] || product.images?.[0] || null);
   }, [product, selectedColorId, selectedSize]);
 
   if (!product) {
@@ -243,12 +241,12 @@ function Gallery({ images, mainImg, onSelect }) {
   return (
     <div className="gallery">
       <div className="gallery-main">
-        <img src={mainImg || list[0]} alt="" />
+        <img src={mainImg || list[0]} alt="" fetchPriority="high" loading="eager" decoding="async" width="720" height="900" />
       </div>
       <div className="gallery-thumbs">
         {list.map((u, i) => (
           <button key={i} onClick={() => onSelect(u)}>
-            <img src={u} alt="" />
+            <img src={u} alt="" loading="lazy" decoding="async" width="80" height="100" />
           </button>
         ))}
       </div>

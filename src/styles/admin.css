@@ -512,3 +512,108 @@
   background: #e9edef;
   color: #53606a;
 }
+
+.admin-color-creator {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  margin-top: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.admin-color-creator h4 {
+  font-size: 14px;
+  font-weight: 750;
+  margin: 0 0 4px;
+}
+.admin-color-creator p,
+.admin-upload-hint {
+  color: var(--mid);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+.admin-color-creator-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.admin-color-creator-fields .afield {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 190px;
+  font-size: 12px;
+}
+.admin-color-creator-fields .admin-color-hex {
+  min-width: 82px;
+  max-width: 95px;
+}
+.admin-color-creator-fields input[type='color'] {
+  padding: 4px;
+  min-height: 40px;
+  width: 76px;
+  cursor: pointer;
+}
+.admin-color-creator-fields .btn-sm {
+  min-height: 40px;
+  white-space: nowrap;
+}
+.admin-colors-preview {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.admin-color-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 5px 9px;
+}
+.admin-color-chip i {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,.18);
+  flex-shrink: 0;
+}
+.admin-upload-fields {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.admin-upload-fields .afield {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+  font-size: 12px;
+}
+.admin-upload-fields input[type='file'] {
+  width: 100%;
+  max-width: 360px;
+}
+.admin-image-color {
+  display: block;
+  margin-top: 4px;
+  color: var(--mid);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .admin-color-creator {
+    padding: 14px;
+  }
+  .admin-color-creator-fields .btn-sm {
+    width: 100%;
+  }
+}

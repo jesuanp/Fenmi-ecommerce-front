@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
+import { MAX_IMAGE_MB, getImageUploadError, prepareImageForUpload, validateImageFile } from '@/utils/imageUpload';
 
 export default function AdminCategoriesPage() {
   const ui = useUI();
@@ -16,13 +17,20 @@ export default function AdminCategoriesPage() {
   const uploadImage = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const error = validateImageFile(file);
+    if (error) {
+      ui.showToast(error);
+      e.target.value = '';
+      return;
+    }
     setUploading(true);
     try {
-      const result = await adminApi.uploadCategoryImage(file);
+      const prepared = await prepareImageForUpload(file, { maxWidth: 960, maxHeight: 960 });
+      const result = await adminApi.uploadCategoryImage(prepared);
       setForm((f) => ({ ...f, imageUrl: result.url }));
-      ui.showToast('Imagen subida');
-    } catch {
-      ui.showToast('No se pudo subir la imagen');
+      ui.showToast('Imagen subida y optimizada.');
+    } catch (error) {
+      ui.showToast(getImageUploadError(error));
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -66,7 +74,7 @@ export default function AdminCategoriesPage() {
           <div className="afield full"><label>Descripción</label><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
 
           <div className="afield full">
-            <label>Imagen</label>
+            <label>Imagen (máximo {MAX_IMAGE_MB} MB)</label>
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               {form.imageUrl ? (
                 <div style={{ position: 'relative', display: 'inline-block' }}>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
+import { MAX_IMAGE_MB, getImageUploadError, prepareImageForUpload, validateImageFile } from '@/utils/imageUpload';
 
 const BLOCK_TYPES = [
   { value: 'hero', label: 'Hero (banner principal)' },
@@ -74,30 +75,38 @@ export default function AdminSettingsPage() {
   };
 
   const handleHeroUpload = async (field, file) => {
+    const error = validateImageFile(file);
+    if (error) return ui.showToast(error);
     setUploadingHero(true);
     try {
+      const prepared = await prepareImageForUpload(file, field === 'hero'
+        ? { maxWidth: 1920, maxHeight: 1200 }
+        : { maxWidth: 1080, maxHeight: 1920 });
       const result = await adminApi.uploadHero({
-        hero: field === 'hero' ? file : null,
-        heroVertical: field === 'heroVertical' ? file : null
+        hero: field === 'hero' ? prepared : null,
+        heroVertical: field === 'heroVertical' ? prepared : null
       });
       set('home', field === 'hero' ? 'heroImage' : 'heroImageVertical',
         field === 'hero' ? result.heroUrl : result.heroVerticalUrl);
-      ui.showToast('Imagen subida');
-    } catch {
-      ui.showToast('Error al subir imagen');
+      ui.showToast('Imagen subida y optimizada.');
+    } catch (error) {
+      ui.showToast(getImageUploadError(error));
     } finally {
       setUploadingHero(false);
     }
   };
 
   const handleBlockImageUpload = async (idx, file) => {
+    const error = validateImageFile(file);
+    if (error) return ui.showToast(error);
     setUploadingBlockImage(true);
     try {
-      const result = await adminApi.uploadHero({ hero: file });
+      const prepared = await prepareImageForUpload(file, { maxWidth: 1600, maxHeight: 1100 });
+      const result = await adminApi.uploadHero({ hero: prepared });
       setBlock(idx, { image: result.heroUrl });
-      ui.showToast('Imagen subida');
-    } catch {
-      ui.showToast('Error al subir imagen');
+      ui.showToast('Imagen subida y optimizada.');
+    } catch (error) {
+      ui.showToast(getImageUploadError(error));
     } finally {
       setUploadingBlockImage(false);
     }
@@ -133,7 +142,7 @@ export default function AdminSettingsPage() {
       <div className="admin-card">
         <h3 style={{ marginBottom: 12 }}>Portada (Hero)</h3>
         <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 14 }}>
-          Sube las imágenes del banner principal de la página de inicio. Se muestran en desktop y mobile.
+          Sube imágenes de hasta {MAX_IMAGE_MB} MB. Se optimizan antes de enviarlas y se muestran en escritorio y celular.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
           <div>
@@ -151,7 +160,7 @@ export default function AdminSettingsPage() {
                 type="file"
                 accept="image/*"
                 style={{ display: 'none' }}
-                onChange={(e) => { if (e.target.files[0]) handleHeroUpload('hero', e.target.files[0]); }}
+                onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) handleHeroUpload('hero', file); }}
                 disabled={uploadingHero}
               />
             </label>
@@ -171,7 +180,7 @@ export default function AdminSettingsPage() {
                 type="file"
                 accept="image/*"
                 style={{ display: 'none' }}
-                onChange={(e) => { if (e.target.files[0]) handleHeroUpload('heroVertical', e.target.files[0]); }}
+                onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) handleHeroUpload('heroVertical', file); }}
                 disabled={uploadingHero}
               />
             </label>
@@ -232,7 +241,7 @@ export default function AdminSettingsPage() {
                 />
               </div>
               <div className="afield" style={{ gridColumn: '1 / -1' }}>
-                <label>Imagen</label>
+                <label>Imagen (máximo {MAX_IMAGE_MB} MB)</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   {b.image && (
                     <img
@@ -247,7 +256,7 @@ export default function AdminSettingsPage() {
                       type="file"
                       accept="image/*"
                       style={{ display: 'none' }}
-                      onChange={(e) => { if (e.target.files[0]) handleBlockImageUpload(idx, e.target.files[0]); }}
+                      onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) handleBlockImageUpload(idx, file); }}
                       disabled={uploadingBlockImage}
                     />
                   </label>
