@@ -9,6 +9,7 @@ import { addressApi } from '@/services/addresses';
 import { money } from '@/services/settings';
 import useAuth from '@/stores/auth';
 import { isOptionalPostalCodeValid, normalizeSavedPostalCode } from '@/utils/postalCode';
+import { CHECKOUT_PROFILE_FIELDS, CHECKOUT_ADDRESS_FIELDS, fillEmptyCheckoutFields } from '@/utils/checkoutAutofill';
 import { checkoutFingerprint, decideWompiRetry } from '@/utils/checkoutRetry';
 import { isWompiWidgetVisible, watchWompiWidgetClose } from '@/utils/wompiWidget';
 import { loadWompiWidget } from '@/utils/loadWompi';
@@ -169,6 +170,7 @@ export default function CheckoutPage() {
   }, [auth.user?.id]);
 
   const defaults = auth.user || {};
+  const touchedFieldsRef = useRef(new Set());
 
   const [form, setForm] = useState({
     firstName: defaults.firstName || '',
@@ -186,7 +188,13 @@ export default function CheckoutPage() {
     methodId: ''
   });
 
+  useEffect(() => {
+    if (!auth.checked || auth.status !== 'authenticated' || !auth.user?.id) return;
+    setForm((current) => fillEmptyCheckoutFields(current, auth.user, CHECKOUT_PROFILE_FIELDS, touchedFieldsRef.current));
+  }, [auth.checked, auth.status, auth.user?.id, auth.user?.firstName, auth.user?.lastName, auth.user?.email, auth.user?.phone]);
+
   const set = (k, v) => {
+    touchedFieldsRef.current.add(k);
     if (k === 'postal_code') setInvalidSavedPostalCode(false);
     setForm((f) => ({ ...f, [k]: v }));
   };
@@ -196,17 +204,12 @@ export default function CheckoutPage() {
     if (!usingSaved || !savedAddress) return;
     const savedCode = String(savedAddress.postal_code ?? '').trim();
     setInvalidSavedPostalCode(Boolean(savedCode && !isOptionalPostalCodeValid(savedCode)));
-    setForm((f) => ({
-      ...f,
-      recipient: savedAddress.recipient || f.recipient,
-      phone: savedAddress.phone || f.phone,
-      line1: savedAddress.line1 || f.line1,
-      line2: savedAddress.line2 || f.line2,
-      city: savedAddress.city || f.city,
-      state: savedAddress.state || f.state,
-      postal_code: normalizeSavedPostalCode(savedAddress.postal_code) || f.postal_code,
-      instructions: savedAddress.instructions || f.instructions
-    }));
+    setForm((current) => fillEmptyCheckoutFields(
+      current,
+      { ...savedAddress, postal_code: normalizeSavedPostalCode(savedAddress.postal_code) },
+      CHECKOUT_ADDRESS_FIELDS,
+      touchedFieldsRef.current
+    ));
   }, [usingSaved, savedAddress]);
 
   const discardSavedAddress = () => {
@@ -588,6 +591,9 @@ export default function CheckoutPage() {
                     <p>Usaremos estos datos para enviarte la confirmación y contactarte si es necesario.</p>
                   </div>
                 </div>
+                {!auth.checked && (
+                  <p role="status" className="checkout-note">Recuperando los datos de tu cuenta…</p>
+                )}
                 <div className="checkout-grid">
                   <Field label="Nombre" value={form.firstName} onChange={(v) => set('firstName', v)} placeholder="Tu nombre" autoComplete="given-name" required />
                   <Field label="Apellido" value={form.lastName} onChange={(v) => set('lastName', v)} placeholder="Tu apellido" autoComplete="family-name" required />
