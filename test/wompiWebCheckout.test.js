@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildWompiWebCheckoutUrl, shouldUseWompiWebCheckout } from '../src/utils/wompiWebCheckout.js';
+import { buildWompiWebCheckoutUrl, shouldUseWompiWebCheckout, shouldPreferHostedWompiCheckout } from '../src/utils/wompiWebCheckout.js';
 
 const widget = {
   publicKey: 'pub_test_1234',
@@ -36,7 +36,7 @@ test('permite omitir la URL de retorno', () => {
 });
 
 test('rechaza importes inválidos o firmas ausentes', () => {
-  for (const bad of [{ amountInCents: 0 }, { amountInCents: 10.5 }, { currency: 'USD' }, { publicKey: '' }, { integritySignature: 'abc' }, { redirectUrl: 'javascript:alert(1)' }]) {
+  for (const bad of [{ amountInCents: 0 }, { amountInCents: 10.5 }, { currency: 'USD' }, { publicKey: '' }, { integritySignature: 'abc' }, { redirectUrl: 'javascript:alert(1)' }, { redirectUrl: 'https://fenmi.netlify.app/,http://localhost:5173/,https://fenmi-ecommerce.vercel.app/checkout/success/FEN-1' }]) {
     assert.throws(() => buildWompiWebCheckoutUrl({ ...widget, ...bad }), Error);
   }
 });
@@ -54,4 +54,12 @@ test('elige Web Checkout en teléfonos y pantallas compactas', () => {
 test('sin matchMedia usa innerWidth como respaldo', () => {
   assert.equal(shouldUseWompiWebCheckout({ innerWidth: 390, navigator: { userAgent: '' } }), true);
   assert.equal(shouldUseWompiWebCheckout({ innerWidth: 1400, navigator: { userAgent: '' } }), false);
+});
+
+test('por defecto el checkout alojado también se abre en escritorio; el widget es opt-in', () => {
+  const desktop = { navigator: { userAgent: 'Desktop' }, matchMedia: () => ({ matches: false }) };
+  const phone = { navigator: { userAgent: 'Mobile' }, matchMedia: () => ({ matches: true }) };
+  assert.equal(shouldPreferHostedWompiCheckout(false, desktop), true);
+  assert.equal(shouldPreferHostedWompiCheckout(true, desktop), false);
+  assert.equal(shouldPreferHostedWompiCheckout(true, phone), true);
 });

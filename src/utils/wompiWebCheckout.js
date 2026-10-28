@@ -13,6 +13,10 @@ export function shouldUseWompiWebCheckout(browser = typeof window !== 'undefined
   return mobileBrowser || compactViewport;
 }
 
+export function shouldPreferHostedWompiCheckout(desktopWidgetEnabled = false, browser = typeof window !== 'undefined' ? window : null) {
+  return !desktopWidgetEnabled || shouldUseWompiWebCheckout(browser);
+}
+
 export function buildWompiWebCheckoutUrl(widget) {
   if (!widget || typeof widget !== 'object') {
     throw new Error('No se recibieron los datos de Wompi. Vuelve a intentarlo.');
@@ -37,13 +41,17 @@ export function buildWompiWebCheckoutUrl(widget) {
   params.set('signature:integrity', signature);
 
   if (widget.redirectUrl) {
+    const redirectValue = String(widget.redirectUrl).trim();
+    if (!redirectValue || /[,\s]/.test(redirectValue)) {
+      throw new Error('La dirección de regreso después del pago es inválida. Revisa FRONTEND_URL en el servidor.');
+    }
     let returnUrl;
     try {
-      returnUrl = new URL(String(widget.redirectUrl));
+      returnUrl = new URL(redirectValue);
     } catch {
       throw new Error('La dirección de regreso después del pago es inválida.');
     }
-    if (!['https:', 'http:'].includes(returnUrl.protocol)) {
+    if (!['https:', 'http:'].includes(returnUrl.protocol) || returnUrl.username || returnUrl.password) {
       throw new Error('La dirección de regreso después del pago es inválida.');
     }
     params.set('redirect-url', returnUrl.toString());

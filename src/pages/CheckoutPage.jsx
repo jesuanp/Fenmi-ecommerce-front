@@ -12,7 +12,7 @@ import { isOptionalPostalCodeValid, normalizeSavedPostalCode } from '@/utils/pos
 import { checkoutFingerprint, decideWompiRetry } from '@/utils/checkoutRetry';
 import { isWompiWidgetVisible, watchWompiWidgetClose } from '@/utils/wompiWidget';
 import { loadWompiWidget } from '@/utils/loadWompi';
-import { buildWompiWebCheckoutUrl, shouldUseWompiWebCheckout } from '@/utils/wompiWebCheckout';
+import { buildWompiWebCheckoutUrl, shouldUseWompiWebCheckout, shouldPreferHostedWompiCheckout } from '@/utils/wompiWebCheckout';
 
 const STEPS = ['Datos y envío', 'Entrega', 'Pago'];
 
@@ -263,15 +263,10 @@ export default function CheckoutPage() {
   };
 
   const openWompiCheckout = async (order, widget, fingerprint) => {
-    const webCheckout = shouldUseWompiWebCheckout();
-    if (!webCheckout) await loadWompiWidget();
     if (!widget?.publicKey || !widget?.integritySignature) {
       throw new Error('Configuración de pago incompleta.');
     }
-    const mobileCheckoutUrl = webCheckout ? buildWompiWebCheckoutUrl(widget) : null;
-    if (!webCheckout && typeof window.WidgetCheckout !== 'function') {
-      throw new Error('El widget de Wompi no cargó. Revisa tu conexión.');
-    }
+    const hostedCheckoutUrl = buildWompiWebCheckoutUrl(widget);
 
     savePendingPayment({
       orderId: order.id,
@@ -282,27 +277,33 @@ export default function CheckoutPage() {
     });
 
     setPreviousCheckout(null);
-    if (mobileCheckoutUrl) {
-      window.location.assign(mobileCheckoutUrl);
+    const useHostedCheckout = shouldPreferHostedWompiCheckout(import.meta.env.VITE_WOMPI_DESKTOP_WIDGET === 'true');
+    if (useHostedCheckout) {
+      window.location.assign(hostedCheckoutUrl);
       return;
     }
 
-    const checkout = new window.WidgetCheckout({
-      publicKey: widget.publicKey,
-      currency: widget.currency,
-      amountInCents: widget.amountInCents,
-      reference: widget.reference,
-      redirectUrl: widget.redirectUrl,
-      signature: { integrity: widget.integritySignature }
-    });
-
-    setPaymentPending(true);
-    watcherRef.current = watchWompiWidgetClose(() => {
-      watcherRef.current = null;
-      setPaymentPending(false);
-    });
-
     try {
+      await loadWompiWidget();
+      if (typeof window.WidgetCheckout !== 'function') {
+        throw new Error('No se pudo abrir el widget de Wompi.');
+      }
+
+      const checkout = new window.WidgetCheckout({
+        publicKey: widget.publicKey,
+        currency: widget.currency,
+        amountInCents: widget.amountInCents,
+        reference: widget.reference,
+        redirectUrl: widget.redirectUrl,
+        signature: { integrity: widget.integritySignature }
+      });
+
+      setPaymentPending(true);
+      watcherRef.current = watchWompiWidgetClose(() => {
+        watcherRef.current = null;
+        setPaymentPending(false);
+      });
+
       checkout.open((result) => {
         stopWatchingWidget();
         setPaymentPending(false);
@@ -320,7 +321,9 @@ export default function CheckoutPage() {
     } catch (error) {
       stopWatchingWidget();
       setPaymentPending(false);
-      throw error;
+      werr('widget no disponible; usando Web Checkout', error.message);
+      ui.showToast('El widget no pudo abrirse. Te llevamos a la pasarela completa de Wompi.');
+      window.location.assign(hostedCheckoutUrl);
     }
   };
 
@@ -389,6 +392,7 @@ export default function CheckoutPage() {
     setPaymentPending(false);
     setSubmitting(true);
     let createdOrderId = null;
+    let paymentInitiated = false;
     try {
       const orderPayload = {
         customer: {
@@ -470,6 +474,7 @@ export default function CheckoutPage() {
       if (wompiMode) {
         const pay = savedWidget ? null : await paymentApi.create(order.id);
         const widget = savedWidget || pay?.widget;
+        paymentInitiated = true;
         await openWompiCheckout(order, widget, fingerprint);
         return;
       }
@@ -484,7 +489,7 @@ export default function CheckoutPage() {
     } catch (err) {
       // Si el pedido se creó pero el pago falló, lo abandonamos para que el
       // carrito del cliente vuelva a tener sus artículos y pueda reintentar.
-      if (createdOrderId) {
+      if (createdOrderId && !paymentInitiated) {
         try {
           await orderApi.releasePending(createdOrderId);
           if (readPendingPayment()?.orderId === createdOrderId) clearPendingPayment();
@@ -504,6 +509,7 @@ export default function CheckoutPage() {
         configUrl: err.config?.url
       });
 
+      if (paymentInitiated) await showPreviousCheckout().catch(() => {});
       const e = err.response?.data?.error || {};
       if (e.code === 'CHECKOUT_PENDING_ORDER') {
         await showPreviousCheckout().catch(() => {});
@@ -685,8 +691,8 @@ export default function CheckoutPage() {
               {wompiMode ? (
                 <>
                   <p style={{ color: 'var(--mid)', fontSize: 13, marginBottom: 14 }}>
-                    En celular irás a la página segura de Wompi, sin ventanas emergentes.
-                    En computadora se abrirá el widget. Allí eliges cómo pagar
+                    Irás a la página segura de Wompi a pantalla completa para evitar bloqueos de carga.
+                    Allí eliges cómo pagar
                     (tarjeta, PSE, Nequi o Bancolombia).
                   </p>
                   {paymentConfig?.sandbox && (

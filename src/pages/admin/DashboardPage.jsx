@@ -29,13 +29,34 @@ function BarChart({ rows, format }) {
 export default function AdminDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadDashboard = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await adminApi.dashboard();
+      setData(result);
+    } catch {
+      setData(null);
+      setError('No se pudieron cargar las estadísticas. Comprueba la conexión o vuelve a intentarlo.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    adminApi.dashboard().then(setData).finally(() => setLoading(false));
+    loadDashboard();
   }, []);
 
   if (loading) return <p>Cargando dashboard…</p>;
-  if (!data) return <p style={{ color: 'var(--danger)' }}>No se pudo cargar el dashboard.</p>;
+  if (!data) return (
+    <div role="alert" className="chart-card" style={{ display: 'grid', justifyItems: 'start', gap: 12 }}>
+      <h1 className="admin-title">Panel</h1>
+      <p style={{ color: 'var(--danger)' }}>{error || 'No se pudo cargar el dashboard.'}</p>
+      <button type="button" className="btn" onClick={loadDashboard}>Reintentar</button>
+    </div>
+  );
 
   const s = data.stats;
   return (
