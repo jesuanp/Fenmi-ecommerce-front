@@ -617,3 +617,31 @@
     width: 100%;
   }
 }
+
+.colombia-admin-office-import {
+  border: 1px solid var(--border, #dedede);
+  padding: 18px;
+  margin: 20px 0;
+  border-radius: 14px;
+  background: #fbfcfc;
+}
+.colombia-admin-office-import h4 { margin: 0 0 8px; }
+.colombia-admin-office-import p { font-size: 13px; line-height: 1.6; }
+.colombia-admin-office-query { display: grid; grid-template-columns: 160px minmax(220px, 1fr) auto; gap: 14px; align-items: end; }
+.colombia-admin-office-query > label { display: grid; gap: 8px; }
+.colombia-admin-office-query .shipping-city-picker { grid-column: auto; }
+.colombia-admin-office-query .btn { margin-bottom: 4px; }
+.colombia-admin-offices-found { display: grid; gap: 8px; margin-top: 16px; max-height: 400px; overflow-y: auto; }
+.colombia-admin-office-found { display: flex; gap: 14px; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--border, #ddd); border-radius: 10px; background: #fff; }
+.colombia-admin-office-found span { display: grid; gap: 3px; min-width: 0; }
+.colombia-admin-office-found small { color: var(--mid, #777); }
+@media (max-width: 760px) {
+  .colombia-admin-office-query { grid-template-columns: 1fr; }
+  .colombia-admin-office-found { align-items: flex-start; flex-direction: column; }
+}
+
+.colombia-admin-packaging { border: 1px solid var(--border, #dedede); border-radius: 14px; padding: 18px; margin: 20px 0; background: #fcfbf8; display: grid; gap: 10px; }
+.colombia-admin-packaging h4 { margin: 0; }
+.colombia-admin-packaging p, .colombia-admin-packaging small { font-size: 13px; line-height: 1.5; }
+.colombia-admin-packaging > label, .colombia-admin-packaging-grid label { display: grid; gap: 6px; }
+.colombia-admin-packaging-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }

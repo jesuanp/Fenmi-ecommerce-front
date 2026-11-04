@@ -17,6 +17,8 @@ const SearchPage = lazy(() => import('./pages/SearchPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 const CheckoutSuccessPage = lazy(() => import('./pages/CheckoutSuccessPage'));
+const MeetingReservationPage = lazy(() => import('./pages/MeetingReservationPage'));
+const AccountMeetingsPage = lazy(() => import('./pages/AccountMeetingsPage'));
 const AccountOrdersPage = lazy(() => import('./pages/AccountOrdersPage'));
 const AccountOrderDetailPage = lazy(() => import('./pages/AccountOrderDetailPage'));
 const WishlistPage = lazy(() => import('./pages/WishlistPage'));
@@ -79,12 +81,14 @@ export default function App() {
           <Route path="cart" element={<CartPage />} />
           <Route path="checkout" element={<Lazy><CheckoutPage /></Lazy>} />
           <Route path="checkout/success/:orderNumber" element={<Lazy><CheckoutSuccessPage /></Lazy>} />
+          <Route path="checkout/meeting/:orderNumber" element={<Lazy><MeetingReservationPage /></Lazy>} />
           <Route path="contact" element={<ContactPage />} />
           <Route path="policies" element={<PoliciesPage />} />
           <Route path="login" element={<LoginPage />} />
           <Route path="register" element={<RegisterPage />} />
           <Route path="verify-email" element={<Lazy><VerifyEmailPage /></Lazy>} />
           <Route path="account/orders" element={<Lazy><AccountOrdersPage /></Lazy>} />
+          <Route path="account/meetings" element={<Lazy><AccountMeetingsPage /></Lazy>} />
           <Route path="account/orders/:id" element={<Lazy><AccountOrderDetailPage /></Lazy>} />
           <Route path="account/wishlist" element={<Lazy><WishlistPage /></Lazy>} />
         </Route>

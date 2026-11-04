@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
 import { MAX_IMAGE_MB, getImageUploadError, prepareImageForUpload, validateImageFile } from '@/utils/imageUpload';
+import ColombiaShippingAdmin from '@/components/ColombiaShippingAdmin';
 
 const BLOCK_TYPES = [
   { value: 'hero', label: 'Hero (banner principal)' },
@@ -71,7 +72,7 @@ export default function AdminSettingsPage() {
     try {
       await adminApi.updateSettings(settings);
       ui.showToast('Configuración guardada');
-    } catch { ui.showToast('Error al guardar'); } finally { setSaving(false); }
+    } catch (error) { ui.showToast(error.response?.data?.error?.message || 'Error al guardar'); } finally { setSaving(false); }
   };
 
   const handleHeroUpload = async (field, file) => {
@@ -317,6 +318,7 @@ export default function AdminSettingsPage() {
             }} />
           </div>
         </div>
+        <ColombiaShippingAdmin value={shipping.colombia} onChange={(next) => set('shipping', 'colombia', next)} />
       </div>
 
       <div className="admin-card">

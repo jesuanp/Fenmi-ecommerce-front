@@ -15,8 +15,12 @@ import { comparePendingCheckout, canRequestStaleRelease } from '@/utils/pendingC
 import { isWompiWidgetVisible, watchWompiWidgetClose } from '@/utils/wompiWidget';
 import { loadWompiWidget } from '@/utils/loadWompi';
 import { buildWompiWebCheckoutUrl, shouldUseWompiWebCheckout, shouldPreferHostedWompiCheckout } from '@/utils/wompiWebCheckout';
+import ShippingLocationPicker from '@/components/ShippingLocationPicker';
+import AveOnlineCityPicker from '@/components/AveOnlineCityPicker';
+import OfficialCarrierExplorer from '@/components/OfficialCarrierExplorer';
+import { needsWompiContract, canConfirmCheckoutPayment } from '@/utils/colombiaCheckout';
 
-const STEPS = ['Datos y envío', 'Entrega', 'Pago'];
+const STEPS = ['Datos y método de entrega', 'Pago o confirmación'];
 
 const WDEBUG = import.meta.env.DEV;
 const wlog = (...a) => { if (WDEBUG) console.log('[wompi:fe]', ...a); };
@@ -46,7 +50,11 @@ export default function CheckoutPage() {
     cart.hydrate();
   }, []);
   const [shippingMethods, setShippingMethods] = useState([]);
+  const [colombiaShipping, setColombiaShipping] = useState(null);
+  const [quoteError, setQuoteError] = useState('');
   const [quote, setQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteRefresh, setQuoteRefresh] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [paymentPending, setPaymentPending] = useState(false);
   const [previousCheckout, setPreviousCheckout] = useState(null);
@@ -124,7 +132,11 @@ export default function CheckoutPage() {
   useEffect(() => {
     settingsApi
       .get()
-      .then((s) => setShippingMethods(s.shipping?.methods || []))
+      .then((s) => {
+        const colombia = s.shipping?.colombia;
+        setColombiaShipping(colombia?.enabled ? colombia : null);
+        setShippingMethods(colombia?.enabled ? (colombia.options || []) : (s.shipping?.methods || []));
+      })
       .catch(() => {
         ui.showToast('No se pudieron cargar los métodos de envío');
         setShippingMethods([]);
@@ -186,7 +198,8 @@ export default function CheckoutPage() {
     postal_code: '',
     country: 'CO',
     instructions: '',
-    methodId: ''
+    methodId: '',
+    locationId: ''
   });
 
   useEffect(() => {
@@ -197,7 +210,8 @@ export default function CheckoutPage() {
   const set = (k, v) => {
     touchedFieldsRef.current.add(k);
     if (k === 'postal_code') setInvalidSavedPostalCode(false);
-    setForm((f) => ({ ...f, [k]: v }));
+    if (k === 'methodId' || ['city', 'state', 'line1', 'locationId'].includes(k)) { setQuote(null); setQuoteError(''); }
+    setForm((f) => k === 'methodId' ? { ...f, methodId: v, locationId: '' } : { ...f, [k]: v });
   };
 
   // Aplicar la dirección guardada a los campos de envío.
@@ -231,7 +245,7 @@ export default function CheckoutPage() {
   const wompiMode = paymentConfig?.provider === 'wompi';
   // El método de pago NO se elige aquí: el widget de Wompi lo pide al cliente
   // dentro de su propia pasarela. Solo se exige aceptar los contratos.
-  const contractsAccepted = !wompiMode || (acceptTerms && acceptPrivacy);
+  const contractsAccepted = canConfirmCheckoutPayment(paymentConfig?.provider, form.methodId, acceptTerms, acceptPrivacy);
   const wompiReady = contractsAccepted;
 
   useEffect(() => {
@@ -243,19 +257,62 @@ export default function CheckoutPage() {
     return () => { active = false; };
   }, [wompiMode, cart.hydrated, cart.items.length]);
 
-  // Recalcular quote cuando cambia método o subtotal.
-  useEffect(() => {
-    if (!form.methodId || cart.items.length === 0) return;
-    orderApi
-      .quote(cart.subtotal(), form.methodId)
-      .then(setQuote)
-      .catch(() => setQuote(null));
-  }, [form.methodId, cart.subtotal()]);
+  const selectedMethod = shippingMethods.find((method) => String(method.id) === String(form.methodId));
+  const selectionNeedsPoint = selectedMethod?.mode === 'OFFICE' || selectedMethod?.mode === 'MEETING';
+  const addressNeeded = !colombiaShipping || selectedMethod?.mode === 'HOME';
+  const needsLiveRate = selectedMethod?.rateMode === 'LIVE_AVEONLINE';
+  const selectedLocation = colombiaShipping?.locations?.find((point) => point.id === form.locationId) || null;
+  const requiresWompi = needsWompiContract(paymentConfig?.provider, form.methodId);
+  const checkoutShipping = {
+    recipient: form.recipient.trim(), phone: form.phone.trim(), line1: form.line1.trim(),
+    line2: form.line2?.trim() || null, city: form.city.trim(), state: form.state.trim(),
+    postal_code: form.postal_code?.trim() || null, country: 'CO',
+    locationId: selectionNeedsPoint ? form.locationId : null,
+    instructions: form.instructions?.trim() || null
+  };
 
-  const infoValid = form.firstName.trim() && form.lastName.trim() && form.email.trim() && form.phone.trim();
+  useEffect(() => {
+    if (!form.methodId || cart.items.length === 0) { setQuote(null); setQuoteLoading(false); return undefined; }
+    if (selectionNeedsPoint && !form.locationId) { setQuote(null); setQuoteLoading(false); return undefined; }
+    if (addressNeeded && (!form.city.trim() || !form.state.trim() || !form.line1.trim())) { setQuote(null); setQuoteLoading(false); return undefined; }
+    let active = true;
+    setQuote(null);
+    setQuoteLoading(true);
+    const timer = setTimeout(() => {
+      setQuoteError('');
+      orderApi.quote(cart.subtotal(), form.methodId, checkoutShipping)
+        .then((result) => { if (active) { setQuote(result); setQuoteError(''); } })
+        .catch((error) => { if (active) { setQuote(null); setQuoteError(error.response?.data?.error?.message || 'No se pudo obtener la tarifa real. No se cobrará un precio estimado.'); } })
+        .finally(() => { if (active) setQuoteLoading(false); });
+    }, 280);
+    return () => { active = false; clearTimeout(timer); };
+  }, [form.methodId, form.locationId, form.city, form.state, form.line1, form.recipient, form.phone, cart.items.length, cart.subtotal(), cart.items.map((item) => `${item.variantId}-${item.quantity}`).join('|'), quoteRefresh]);
+
+  const infoValid = form.firstName.trim().length > 1 && form.lastName.trim().length > 1 && form.email.trim().includes('@') && /^(\+57\s?)?\d{10}$/.test(form.phone.trim());
   const postalCodeValid = isOptionalPostalCodeValid(form.postal_code);
-  const addrValid = form.recipient.trim() && form.phone && form.line1.trim() && form.city.trim() && form.state.trim() && postalCodeValid;
-  const methodValid = !!form.methodId && shippingMethods.some((method) => String(method.id) === String(form.methodId));
+  const addrValid = form.recipient.trim().length > 1 && (selectionNeedsPoint ? !!selectedLocation : form.line1.trim().length >= 4 && form.city.trim().length > 1 && form.state.trim().length > 1 && postalCodeValid);
+  const quoteExpired = needsLiveRate && quote?.quoteExpiresAt && Date.parse(quote.quoteExpiresAt) <= Date.now();
+  const methodValid = !!selectedMethod && selectedMethod.available !== false && !quoteLoading && !quoteExpired && quote?.methodId === form.methodId;
+
+  useEffect(() => {
+    if (!needsLiveRate || !quote?.quoteExpiresAt) return undefined;
+    const expiresAt = Date.parse(quote.quoteExpiresAt);
+    if (!Number.isFinite(expiresAt)) return undefined;
+    const timer = window.setTimeout(() => {
+      setQuote(null);
+      setQuoteRefresh((value) => value + 1);
+    }, Math.max(250, expiresAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [needsLiveRate, quote?.quoteExpiresAt]);
+
+  useEffect(() => {
+    if (!needsLiveRate) return undefined;
+    const refreshOnReturn = () => {
+      if (document.visibilityState === 'visible') setQuoteRefresh((value) => value + 1);
+    };
+    window.addEventListener('focus', refreshOnReturn);
+    return () => window.removeEventListener('focus', refreshOnReturn);
+  }, [needsLiveRate]);
 
   const shippingDiscount = cart.coupon?.type === 'FREE_SHIPPING' && quote ? Number(quote.cost || 0) : 0;
   const displayTotal = Math.max(0, Number(cart.subtotal() || 0) + Number(quote?.cost || 0) - Number(cart.discount || 0) - shippingDiscount);
@@ -362,7 +419,7 @@ export default function CheckoutPage() {
 
   const releasePreviousCheckout = async () => {
     if (!previousCheckout || recoveringCheckout) return;
-    const accepted = window.confirm('¿Quieres descartar el pedido anterior? Comprobaremos que Wompi no tenga un pago aprobado ni en proceso. Los productos seguirán en el carrito.');
+    const accepted = window.confirm(previousCheckout.paymentKind === 'in_person' ? '¿Quieres cancelar el encuentro presencial anterior? Los productos seguirán en el carrito.' : '¿Quieres descartar el pedido anterior? Comprobaremos que Wompi no tenga un pago aprobado ni en proceso. Los productos seguirán en el carrito.');
     if (!accepted) return;
     setRecoveringCheckout(true);
     try {
@@ -381,12 +438,18 @@ export default function CheckoutPage() {
   };
 
   const submitOrder = async () => {
+    if (!methodValid) {
+      setStep(0);
+      setQuoteRefresh((value) => value + 1);
+      ui.showToast('La tarifa de envío venció o cambió. Revisa el importe actualizado antes de pagar.');
+      return;
+    }
     if (submittingRef.current) return;
     if (wompiMode && paymentPending && isWompiWidgetVisible()) {
       ui.showToast('La pasarela de Wompi todavía está abierta. Ciérrala antes de intentar nuevamente.');
       return;
     }
-    if (!postalCodeValid) {
+    if (addressNeeded && !postalCodeValid) {
       setStep(0);
       ui.showToast('El código postal debe tener 6 dígitos, o puedes dejarlo vacío.');
       return;
@@ -405,18 +468,9 @@ export default function CheckoutPage() {
           email: form.email.trim(),
           phone: form.phone.trim()
         },
-        shipping: {
-          recipient: form.recipient.trim(),
-          phone: form.phone.trim(),
-          line1: form.line1.trim(),
-          line2: form.line2?.trim() || null,
-          city: form.city.trim(),
-          state: form.state.trim(),
-          postal_code: form.postal_code?.trim() || null,
-          country: form.country || 'CO',
-          instructions: form.instructions?.trim() || null
-        },
-        methodId: form.methodId
+        shipping: checkoutShipping,
+        methodId: form.methodId,
+        expectedShippingCost: quote?.cost
       };
       const fingerprint = checkoutFingerprint({
         items: cart.items,
@@ -435,7 +489,7 @@ export default function CheckoutPage() {
           const relation = comparePendingCheckout(pending, serverPending);
           if (relation === 'DIFFERENT') {
             setPreviousCheckout(serverPending);
-            setStep(2);
+            setStep(1);
             ui.showToast('Tu carrito tiene otro intento pendiente. Revisa la compra anterior antes de continuar.');
             return;
           }
@@ -499,6 +553,12 @@ export default function CheckoutPage() {
         createdOrderId = order.id;
       }
 
+      if (selectedMethod?.mode === 'MEETING') {
+        ui.showToast('Solicitud de encuentro registrada. Pagarás directamente al vendedor cuando recibas el producto.');
+        navigate(`/checkout/meeting/${order.orderNumber}`, { state: { orderId: order.id } });
+        return;
+      }
+
       if (wompiMode) {
         const pay = savedWidget ? null : await paymentApi.create(order.id);
         const widget = savedWidget || pay?.widget;
@@ -541,7 +601,7 @@ export default function CheckoutPage() {
       const e = err.response?.data?.error || {};
       if (e.code === 'CHECKOUT_PENDING_ORDER') {
         await showPreviousCheckout().catch(() => {});
-        setStep(2);
+        setStep(1);
         ui.showToast('Encontramos un pedido anterior. Revisa las opciones para continuar de forma segura.');
         return;
       }
@@ -554,7 +614,14 @@ export default function CheckoutPage() {
       const list = details
         .map((d) => `${(d.path || d.field || []).join('.')}: ${d.message}`)
         .join(' · ');
-      ui.showToast(list || e.message || err.message || 'Error al crear el pedido');
+      if (e.code === 'SHIPPING_RATE_CHANGED') {
+        setQuote(null);
+        setStep(0);
+        setQuoteRefresh((value) => value + 1);
+        ui.showToast('La tarifa de transporte cambió. Se volverá a cotizar antes de continuar; todavía no se realizó ningún cobro.');
+      } else {
+        ui.showToast(list || e.message || err.message || 'Error al crear el pedido');
+      }
       if (err.response?.data?.error?.code === 'INSUFFICIENT_STOCK') {
         await cart.hydrate();
       }
@@ -585,17 +652,19 @@ export default function CheckoutPage() {
               </p>
             )}
             <p>{!previousCheckout.canResume
-              ? 'Este intento pertenece a un carrito anterior o ya venció. Comprueba su estado y descártalo solo si Wompi confirma que no hay un pago activo.'
+              ? 'Este intento pertenece a un carrito anterior o ya venció. Revisa su estado antes de iniciar otro.'
+              : previousCheckout.paymentKind === 'in_person'
+              ? 'Tienes un encuentro presencial anterior todavía pendiente. Puedes consultarlo o cancelar la solicitud si ya no lo necesitas.'
               : previousCheckout.hasProviderReference
               ? 'No hemos marcado este pedido como pagado. Comprueba su estado o recupera el pago anterior.'
               : 'El intento quedó registrado antes de abrir Wompi. Puedes reabrirlo o liberarlo tras verificar que no haya un cobro.'}</p>
           </div>
           <div className="checkout-recovery-actions">
-            <button type="button" className="btn lime" disabled={recoveringCheckout || !previousCheckout.canResume} onClick={resumePreviousCheckout}>
+            {previousCheckout.paymentKind !== 'in_person' && <button type="button" className="btn lime" disabled={recoveringCheckout || !previousCheckout.canResume} onClick={resumePreviousCheckout}>
               {recoveringCheckout ? 'Comprobando…' : 'Reabrir pago anterior'}
-            </button>
+            </button>}
             <button type="button" className="btn outline" disabled={recoveringCheckout} onClick={releasePreviousCheckout}>
-              Descartar intento anterior
+              {previousCheckout.paymentKind === 'in_person' ? 'Cancelar encuentro anterior' : 'Descartar intento anterior'}
             </button>
             {previousCheckout.hasProviderReference && (
               <button type="button" className="text-link checkout-recovery-link" onClick={() => navigate(`/checkout/success/${previousCheckout.orderNumber}`, { state: { provider: 'wompi' } })}>
@@ -612,121 +681,76 @@ export default function CheckoutPage() {
           {step === 0 && (
             <div className="checkout-step">
               <div className="checkout-step-copy">
-                <h2>Datos de contacto y envío</h2>
-                <p>Completa tus datos en una sola vista para hacer el proceso más rápido y claro.</p>
+                <h2>Datos del cliente y entrega</h2>
+                <p>Escoge cómo quieres recibir tu compra. Las tarifas y los puntos habilitados se verifican antes de cobrar.</p>
               </div>
-
               <div className="checkout-card">
-                <div className="checkout-card-head">
-                  <div>
-                    <h3>Información del cliente</h3>
-                    <p>Usaremos estos datos para enviarte la confirmación y contactarte si es necesario.</p>
-                  </div>
-                </div>
-                {!auth.checked && (
-                  <p role="status" className="checkout-note">Recuperando los datos de tu cuenta…</p>
-                )}
+                <div className="checkout-card-head"><div><h3>Información de contacto</h3><p>Te enviaremos novedades de la entrega a estos datos.</p></div></div>
+                {!auth.checked && <p className="checkout-note">Recuperando datos de tu cuenta…</p>}
                 <div className="checkout-grid">
                   <Field label="Nombre" value={form.firstName} onChange={(v) => set('firstName', v)} placeholder="Tu nombre" autoComplete="given-name" required />
                   <Field label="Apellido" value={form.lastName} onChange={(v) => set('lastName', v)} placeholder="Tu apellido" autoComplete="family-name" required />
                   <Field label="Correo" type="email" value={form.email} onChange={(v) => set('email', v)} placeholder="correo@ejemplo.com" autoComplete="email" required />
-                  <Field label="Teléfono" value={form.phone} onChange={(v) => set('phone', v)} placeholder="Tu teléfono" autoComplete="tel" inputMode="tel" required />
+                  <Field label="Celular colombiano" value={form.phone} onChange={(v) => set('phone', v)} placeholder="3001234567" autoComplete="tel" inputMode="tel" required />
                 </div>
               </div>
 
-              <div className="checkout-card">
-                <div className="checkout-card-head">
-                  <div>
-                    <h3>Dirección de envío</h3>
-                    <p>Indica dónde quieres recibir tu pedido.</p>
-                  </div>
-                </div>
+              <div className="checkout-card checkout-methods">
+                <div className="checkout-card-head"><div><h3>¿Cómo quieres recibir tu pedido?</h3><p>Elige entrega presencial, domicilio o recogida en sucursal autorizada.</p></div></div>
+                {shippingMethods.length === 0 && <p>No se han configurado métodos de entrega.</p>}
+                {shippingMethods.map((m) => <label key={m.id} className={`ship-option ${m.available === false ? 'shipping-option-disabled' : ''}`}>
+                  <input type="radio" name="method" value={m.id} disabled={m.available === false} checked={form.methodId === m.id} onChange={() => set('methodId', m.id)} />
+                  <div><strong>{m.name}</strong><span>{m.description}</span>{m.available === false && <small>Disponible tras confirmar tarifas y puntos de recogida con FENMI.</small>}</div>
+                  {m.mode === 'MEETING' ? <span>Se paga al recibir</span> : m.rateMode === 'LIVE_AVEONLINE' ? <span>Tarifa real en línea</span> : m.rateMode === 'OFFICE_VERIFIED' ? <span>Tarifa verificada por oficina</span> : m.mode ? <span>Tarifa FENMI por destino</span> : <span>{money(Number(m.cost || 0))}</span>}
+                </label>)}
+                {colombiaShipping && <><p className="shipping-muted">Los envíos a domicilio configurados en modo API se cotizan en tiempo real desde Barranquilla. Las sucursales usan únicamente tarifas confirmadas por FENMI.</p><OfficialCarrierExplorer /></>}
+              </div>
 
-                {usingSaved && savedAddress && (
-                  <div className="checkout-banner">
-                    <span>Usamos tu última dirección guardada.</span>
-                    <button
-                      type="button"
-                      className="text-link checkout-banner-action"
-                      onClick={discardSavedAddress}
-                    >
-                      Usar otra
-                    </button>
-                  </div>
-                )}
-
+              {selectedMethod && <div className="checkout-card">
+                <div className="checkout-card-head"><div>
+                  <h3>{selectedMethod.mode === 'MEETING' ? 'Entrega presencial' : selectedMethod.mode === 'OFFICE' ? 'Recogida en sucursal' : 'Dirección de envío'}</h3>
+                  <p>{selectedMethod.mode === 'MEETING' ? 'Coordinaremos contigo un encuentro en el lugar seleccionado. El pago se realiza en persona.' : selectedMethod.mode === 'OFFICE' ? 'Únicamente mostramos sucursales donde FENMI haya confirmado la recepción de pedidos para retiro.' : 'Indica la dirección en la que recibirás tu compra.'}</p>
+                </div></div>
                 <div className="checkout-grid">
-                  <Field label="Destinatario" value={form.recipient} onChange={(v) => set('recipient', v)} placeholder="Nombre de quien recibe" autoComplete="shipping name" required />
-                  <Field label="Teléfono de entrega" value={form.phone} onChange={(v) => set('phone', v)} placeholder="Número de contacto" autoComplete="shipping tel" inputMode="tel" required />
-                  <Field label="Dirección" value={form.line1} onChange={(v) => set('line1', v)} placeholder="Calle, carrera, número" autoComplete="shipping address-line1" required className="field-span-2" />
-                  <Field label="Apartamento o complemento (opcional)" value={form.line2} onChange={(v) => set('line2', v)} placeholder="Apto, casa, torre, interior" autoComplete="shipping address-line2" className="field-span-2" />
-                  <Field label="Ciudad" value={form.city} onChange={(v) => set('city', v)} placeholder="Ciudad" autoComplete="shipping address-level2" required />
-                  <Field label="Departamento" value={form.state} onChange={(v) => set('state', v)} placeholder="Departamento" autoComplete="shipping address-level1" required />
-                  <Field
-                    label="Código postal (opcional)"
-                    value={form.postal_code}
-                    onChange={(v) => set('postal_code', v)}
-                    inputMode="numeric"
-                    placeholder="Ej. 050001"
-                    autoComplete="shipping postal-code"
-                    hint="Si lo escribes, debe tener 6 dígitos."
-                    error={!postalCodeValid ? 'Escribe los 6 dígitos del código postal de Colombia o deja el campo vacío.' : ''}
-                  />
+                  <Field label="Persona que recibe" value={form.recipient} onChange={(v) => set('recipient', v)} placeholder="Nombre del destinatario" autoComplete="shipping name" required />
+                  <Field label="Teléfono de contacto" value={form.phone} onChange={(v) => set('phone', v)} placeholder="3001234567" autoComplete="shipping tel" inputMode="tel" required />
                 </div>
-                {invalidSavedPostalCode && (
-                  <p role="status" className="checkout-note">
-                    La dirección guardada tenía un código postal inválido. Lo dejamos vacío porque es opcional.
-                  </p>
-                )}
-                <label className="checkout-field field-span-2">
-                  <span>Instrucciones de entrega</span>
-                  <textarea
-                    className="field checkout-textarea"
-                    placeholder="Ej. Portería, torre, horario preferido o indicaciones adicionales (opcional)"
-                    value={form.instructions}
-                    onChange={(e) => set('instructions', e.target.value)}
-                    rows={4}
-                  />
-                </label>
-              </div>
+                {selectionNeedsPoint && <ShippingLocationPicker
+                  locations={(colombiaShipping?.locations || []).filter((point) => point.type === selectedMethod.mode && (selectedMethod.mode === 'MEETING' || point.carrier === selectedMethod.carrier))}
+                  option={selectedMethod} selectedId={form.locationId} onSelect={(locationId) => set('locationId', locationId)}
+                />}
+                {addressNeeded && <>
+                  {usingSaved && savedAddress && <div className="checkout-banner"><span>Usamos tu última dirección guardada.</span><button type="button" className="text-link checkout-banner-action" onClick={discardSavedAddress}>Usar otra</button></div>}
+                  <div className="checkout-grid">
+                    <Field label="Dirección completa" value={form.line1} onChange={(v) => set('line1', v)} placeholder="Calle, carrera, número" autoComplete="shipping address-line1" required className="field-span-2" />
+                    <Field label="Apartamento o complemento (opcional)" value={form.line2} onChange={(v) => set('line2', v)} placeholder="Apto, casa, torre, interior" autoComplete="shipping address-line2" className="field-span-2" />
+                    {needsLiveRate ? <AveOnlineCityPicker city={form.city} state={form.state} onEdit={(value) => { set('city', value); set('state', ''); }} onSelect={(city, state) => { setForm((current) => ({ ...current, city, state })); setQuote(null); }} /> : <>
+                      <Field label="Ciudad" value={form.city} onChange={(v) => set('city', v)} placeholder="Ciudad" autoComplete="shipping address-level2" required />
+                      <Field label="Departamento" value={form.state} onChange={(v) => set('state', v)} placeholder="Departamento" autoComplete="shipping address-level1" required />
+                    </>}
+                    <Field label="Código postal (opcional)" value={form.postal_code} onChange={(v) => set('postal_code', v)} inputMode="numeric" placeholder="Ej. 050001" autoComplete="shipping postal-code" hint="Si lo escribes, debe tener 6 dígitos." error={!postalCodeValid ? 'Escribe los 6 dígitos o deja el campo vacío.' : ''} />
+                  </div>
+                  {invalidSavedPostalCode && <p role="status" className="checkout-note">La dirección guardada tenía un código postal inválido y lo dejamos vacío.</p>}
+                </>}
+                <label className="checkout-field"><span>Indicaciones adicionales (opcional)</span><textarea className="field checkout-textarea" rows={3} value={form.instructions} onChange={(e) => set('instructions', e.target.value)} placeholder="Horario, indicaciones de entrega o datos del encuentro" /></label>
+                {quoteLoading && <p className="shipping-quote-confirmed" role="status">Consultando tarifa del transportador desde Barranquilla…</p>}
+                {quoteError && <p className="shipping-quote-error" role="alert">{quoteError}</p>}
+                {quote && <p className="shipping-quote-confirmed">{quote.mode === 'MEETING' ? 'Encuentro presencial · el producto se paga al recibirlo.' : quote.tariffSource === 'AVEONLINE_LIVE_QUOTE' ? `Tarifa de ${selectedMethod?.name}: ${money(quote.quotedCarrierCost)}${quote.free ? ' (FENMI asume el flete)' : ''}${quote.deliveryDays ? ` · aproximadamente ${quote.deliveryDays} día(s)` : ''}. Cotización sujeta a las condiciones de la transportadora.` : `Tarifa de envío registrada por FENMI: ${quote.free ? 'sin costo para ti' : money(quote.cost)}.`}</p>}
+              </div>}
             </div>
           )}
 
           {step === 1 && (
             <div className="checkout-step">
-              <div className="checkout-step-copy">
-                <h2>Selecciona tu método de envío</h2>
-                <p>Elige la opción que más te convenga para recibir tu pedido.</p>
-              </div>
-              <div className="checkout-card checkout-methods">
-                {shippingMethods.length === 0 ? (
-                  <p style={{ color: 'var(--danger)' }}>No hay métodos de envío disponibles. Actualiza la página o contacta a la tienda.</p>
-                ) : (
-                  shippingMethods.map((m) => (
-                    <label key={m.id} className="ship-option">
-                      <input
-                        type="radio"
-                        name="method"
-                        value={m.id}
-                        checked={String(form.methodId) === String(m.id)}
-                        onChange={() => set('methodId', m.id)}
-                      />
-                      <div>
-                        <strong>{m.name}</strong>
-                        <span>{m.description}</span>
-                      </div>
-                      <span>{money(Number(m.cost || 0))}</span>
-                    </label>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="checkout-step">
               <h2>Confirmar pedido</h2>
-              {wompiMode ? (
+              {selectedMethod?.mode === 'MEETING' ? (
+                <div className="checkout-meeting-notice">
+                  <h3>Encuentro con el vendedor</h3>
+                  <p>No se realizará ningún cobro por Wompi ahora. Enviaremos la solicitud a FENMI y coordinarás el encuentro en el punto seleccionado.</p>
+                  <p><strong>Importante:</strong> paga únicamente cuando recibas el producto y el vendedor confirme el encuentro. La compra solo aparecerá como pagada después de registrar la entrega y el dinero recibido.</p>
+                  {selectedLocation && <p>Ubicación: <strong>{selectedLocation.name}</strong> · {selectedLocation.address}, {selectedLocation.city}</p>}
+                </div>
+              ) : wompiMode ? (
                 <>
                   <p style={{ color: 'var(--mid)', fontSize: 13, marginBottom: 14 }}>
                     Irás a la página segura de Wompi a pantalla completa para evitar bloqueos de carga.
@@ -817,12 +841,11 @@ export default function CheckoutPage() {
                 ← Volver
               </button>
             )}
-            {step < 2 ? (
+            {step < 1 ? (
               <button
                 className="btn"
                 disabled={
-                  (step === 0 && !(infoValid && addrValid)) ||
-                  (step === 1 && !methodValid)
+                  (step === 0 && !(infoValid && addrValid && methodValid))
                 }
                 onClick={() => setStep(step + 1)}
               >
@@ -836,6 +859,8 @@ export default function CheckoutPage() {
               >
                 {submitting
                   ? 'Creando pedido…'
+                  : selectedMethod?.mode === 'MEETING'
+                  ? 'Solicitar encuentro · pagar al recibir'
                   : wompiMode
                   ? 'Pagar con Wompi'
                   : 'Realizar pedido'}
@@ -846,7 +871,7 @@ export default function CheckoutPage() {
 
         {/* ── Resumen lateral ── */}
         <div className="checkout-summary">
-          <h3>Tu orden</h3>
+          <h3>Resumen de tu compra</h3>
           {cart.items.map((item) => (
             <div key={item.itemId} className="cs-line">
               <div>
@@ -858,6 +883,7 @@ export default function CheckoutPage() {
               <span>{money(item.subtotal)}</span>
             </div>
           ))}
+          {selectedMethod && <p className="shipping-selected-summary">{selectedMethod.name}{selectedLocation ? ` · ${selectedLocation.name}` : ''}</p>}
           <div className="cs-totals">
             <div className="cs-row">
               <span>Subtotal</span>
@@ -872,7 +898,7 @@ export default function CheckoutPage() {
             <div className="cs-row">
               <span>Envío</span>
               <span>
-                {quote ? (quote.free ? 'Gratis' : money(quote.cost)) : '—'}
+                {quote ? (quote.free ? 'Sin costo' : money(quote.cost)) : 'Por confirmar'}
               </span>
             </div>
             <div className="cs-total">

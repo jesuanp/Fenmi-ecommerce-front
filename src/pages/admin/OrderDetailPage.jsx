@@ -33,6 +33,7 @@ export default function AdminOrderDetailPage() {
   const [carrier, setCarrier] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [shippingBusy, setShippingBusy] = useState(false);
+  const [meetingBusy, setMeetingBusy] = useState(false);
 
   useEffect(() => { adminApi.getOrder(id).then(setOrder); }, [id]);
 
@@ -80,6 +81,21 @@ export default function AdminOrderDetailPage() {
     } finally {
       setShippingBusy(false);
     }
+  };
+
+  const confirmMeeting = async () => {
+    const note = window.prompt('Escribe quién recibió el dinero y confirma la entrega física del producto. Mínimo 8 caracteres:');
+    if (note === null) return;
+    if (note.trim().length < 8) return ui.showToast('La nota debe tener al menos 8 caracteres.');
+    if (!window.confirm('¿Confirmas que RECIBISTE EL DINERO Y ENTREGASTE LOS PRODUCTOS en persona? Este paso marcará la compra como pagada y entregada.')) return;
+    setMeetingBusy(true);
+    try {
+      await adminApi.confirmMeetingCash(id, note.trim());
+      setOrder(await adminApi.getOrder(id));
+      ui.showToast('Pago en efectivo recibido y entrega confirmada');
+    } catch (error) {
+      ui.showToast(error.response?.data?.error?.message || 'No se pudo confirmar la entrega presencial');
+    } finally { setMeetingBusy(false); }
   };
 
   const approve = async (paymentId) => {
@@ -242,6 +258,9 @@ export default function AdminOrderDetailPage() {
           <p>{order.shipping?.city}, {order.shipping?.state}</p>
           <p>{order.shipping?.phone}</p>
           <p>Método: {order.shipping?.method?.methodName} · {money(order.shippingTotal)}</p>
+          {order.shipping?.method?.location && <div className="shipping-admin-delivery-point"><strong>Punto de retiro o encuentro:</strong><p>{order.shipping.method.location.name}</p><p>{order.shipping.method.location.address}, {order.shipping.method.location.city}, {order.shipping.method.location.state}</p></div>}
+          {order.shipping?.method?.mode === 'MEETING' && order.paymentStatus === 'PENDING' && <p><strong>Pago al recibir:</strong> no hay cobro por Wompi. La entrega y el cobro requieren confirmación del vendedor.</p>}
+          {order.shipping?.method?.mode === 'MEETING' && order.paymentStatus === 'PENDING' && order.status === 'PENDING_PAYMENT' && <button type="button" disabled={meetingBusy} className="btn lime" onClick={confirmMeeting}>{meetingBusy ? 'Confirmando…' : 'Confirmar efectivo recibido y producto entregado'}</button>}
         </div>
 
         <div className="admin-card detail-section">
@@ -279,7 +298,7 @@ export default function AdminOrderDetailPage() {
               <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div style={{ flex: '1 1 240px' }}>
                   <p style={{ fontSize: 13, color: 'var(--mid)' }}>
-                    <strong>{p.provider === 'wompi' ? 'Pasarela: Wompi' : `Banco: ${p.bank || 'Sin especificar'}`}</strong> ·{' '}
+                    <strong>{p.provider === 'wompi' ? 'Pasarela: Wompi' : p.provider === 'in_person' ? 'Efectivo al encontrarse con el vendedor' : `Banco: ${p.bank || 'Sin especificar'}`}</strong> ·{' '}
                     <strong>Estado:</strong>{' '}
                     <span className={'status-badge ' + (p.status === 'APPROVED' ? 'paid' : (p.status === 'PENDING' ? 'pending' : 'cancelled'))}>
                       {TRANSACTION_STATUS_LABELS[p.status] || p.status}

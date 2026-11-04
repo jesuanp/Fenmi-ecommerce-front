@@ -13,8 +13,20 @@ export const orderApi = {
   async releasePending(id) {
     return (await client.post(`/orders/${id}/release-pending`)).data.data;
   },
-  async quote(subtotal, methodId) {
-    return (await client.post('/shipping/quote', { subtotal, methodId })).data.data;
+  async shippingCities(q) {
+    return (await client.get('/shipping/cities', { params: { q } })).data.data;
+  },
+  async shippingOffices(carrier, city, state) {
+    return (await client.get('/shipping/offices', { params: { carrier, city, state } })).data.data;
+  },
+  async quote(subtotal, methodId, shipping = {}) {
+    return (await client.post('/shipping/quote', { subtotal, methodId, shipping })).data.data;
+  },
+  async meeting(number) {
+    return (await client.get(`/orders/meeting/${encodeURIComponent(number)}`)).data.data;
+  },
+  async meetings() {
+    return (await client.get('/orders/meetings', { params: { _t: Date.now() } })).data.data;
   },
   async list(params = {}) {
     return (await client.get('/orders', { params })).data.data;

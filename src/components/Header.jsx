@@ -141,6 +141,9 @@ export default function Header({ transparentOnHome = false }) {
                 <Link to="/account/orders" onClick={() => setAccountOpen(false)}>
                   Mis pedidos
                 </Link>
+                <Link to="/account/meetings" onClick={() => setAccountOpen(false)}>
+                  Mis encuentros pendientes
+                </Link>
                 <Link to="/account/wishlist" onClick={() => setAccountOpen(false)}>
                   Mis favoritos
                 </Link>

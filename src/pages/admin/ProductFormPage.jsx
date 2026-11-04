@@ -21,6 +21,10 @@ const FIELD_LABELS = {
   sizeId: 'Talla',
   stock: 'Existencias',
   priceOverride: 'Precio de variante',
+  shippingWeightKg: 'Peso de envío',
+  shippingLengthCm: 'Largo de envío',
+  shippingWidthCm: 'Ancho de envío',
+  shippingHeightCm: 'Alto de envío',
   tagIds: 'Etiquetas'
 };
 
@@ -43,7 +47,8 @@ function describeError(err, fallback = 'Error al guardar') {
 const EMPTY = {
   name: '', categoryId: '', shortDescription: '', longDescription: '',
   fabricType: '', composition: '', careInstructions: '', shippingInfo: '', returnInfo: '',
-  basePrice: '', compareAtPrice: '', featured: false, isNew: false, bestSeller: false,
+  basePrice: '', compareAtPrice: '',
+  shippingWeightKg: '', shippingLengthCm: '', shippingWidthCm: '', shippingHeightCm: '', featured: false, isNew: false, bestSeller: false,
   active: true
 };
 
@@ -91,6 +96,8 @@ export default function ProductFormPage() {
           fabricType: p.fabricType || '', composition: p.composition || '',
           careInstructions: p.careInstructions || '', shippingInfo: p.shippingInfo || '',
           returnInfo: p.returnInfo || '', basePrice: p.basePrice, compareAtPrice: p.compareAtPrice || '',
+          shippingWeightKg: p.shippingWeightKg ?? '', shippingLengthCm: p.shippingLengthCm ?? '',
+          shippingWidthCm: p.shippingWidthCm ?? '', shippingHeightCm: p.shippingHeightCm ?? '',
           featured: p.featured, isNew: p.isNew, bestSeller: p.bestSeller, active: p.active
         });
         setVariants((p.variants || []).map((v) => ({ colorId: v.colorId, sizeId: v.sizeId, stock: v.stock, priceOverride: v.priceOverride || '', active: v.active })));
@@ -124,6 +131,10 @@ export default function ProductFormPage() {
       returnInfo: form.returnInfo || null,
       basePrice: Number(form.basePrice),
       compareAtPrice: form.compareAtPrice ? Number(form.compareAtPrice) : null,
+      shippingWeightKg: form.shippingWeightKg === '' ? null : Number(form.shippingWeightKg),
+      shippingLengthCm: form.shippingLengthCm === '' ? null : Number(form.shippingLengthCm),
+      shippingWidthCm: form.shippingWidthCm === '' ? null : Number(form.shippingWidthCm),
+      shippingHeightCm: form.shippingHeightCm === '' ? null : Number(form.shippingHeightCm),
       featured: !!form.featured,
       isNew: !!form.isNew,
       bestSeller: !!form.bestSeller,
@@ -235,6 +246,17 @@ export default function ProductFormPage() {
             <label className="check-row"><input type="checkbox" checked={form.isNew} onChange={(e) => set('isNew', e.target.checked)} /> Nuevo</label>
             <label className="check-row"><input type="checkbox" checked={form.bestSeller} onChange={(e) => set('bestSeller', e.target.checked)} /> Más vendido</label>
             <label className="check-row"><input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} /> Activo</label>
+          </div>
+        </div>
+
+        <div className="admin-card">
+          <h3 style={{ marginBottom: 12 }}>Datos reales para cotizar el envío</h3>
+          <p style={{ fontSize: 13, color: 'var(--mid)', marginBottom: 16 }}>Indica el peso y las dimensiones de cada prenda empaquetada. Son necesarios para que la transportadora cotice desde Barranquilla. No se usan valores aproximados.</p>
+          <div className="form-grid">
+            <div className="afield"><label>Peso (kg)</label><input type="number" min="0.001" max="250" step="0.001" placeholder="Ej. 0.350" value={form.shippingWeightKg} onChange={(e) => set('shippingWeightKg', e.target.value)} /></div>
+            <div className="afield"><label>Largo del paquete (cm)</label><input type="number" min="0.1" max="250" step="0.1" placeholder="Ej. 30" value={form.shippingLengthCm} onChange={(e) => set('shippingLengthCm', e.target.value)} /></div>
+            <div className="afield"><label>Ancho del paquete (cm)</label><input type="number" min="0.1" max="250" step="0.1" placeholder="Ej. 22" value={form.shippingWidthCm} onChange={(e) => set('shippingWidthCm', e.target.value)} /></div>
+            <div className="afield"><label>Alto del paquete (cm)</label><input type="number" min="0.1" max="250" step="0.1" placeholder="Ej. 5" value={form.shippingHeightCm} onChange={(e) => set('shippingHeightCm', e.target.value)} /></div>
           </div>
         </div>
 

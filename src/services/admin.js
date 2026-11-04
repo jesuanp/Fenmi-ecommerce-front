@@ -55,6 +55,7 @@ export const adminApi = {
   rejectOrderPayment: (paymentId, reason) => client.post(`/admin/orders/${paymentId}/reject-payment`, { reason }).then((r) => r.data.data),
   // Consulta el estado real en Wompi y confirma si quedó APPROVED.
   syncOrderPayment: (orderId) => client.post(`/admin/orders/${orderId}/sync-payment`).then((r) => r.data.data),
+  confirmMeetingCash: (orderId, note) => client.post(`/admin/orders/${orderId}/confirm-meeting-cash`, { received: true, note }).then((r) => r.data.data),
 
   listRefunds: (p) => client.get('/admin/refunds', { params: p }).then((r) => r.data.data),
   confirmManualRefund: (id, reference) => client.post(`/admin/refunds/${id}/confirm-manual`, { reference }).then((r) => r.data.data),
