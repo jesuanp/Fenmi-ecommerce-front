@@ -312,10 +312,8 @@ export default function AdminSettingsPage() {
         <h3 style={{ marginBottom: 12 }}>Envíos</h3>
         <div className="form-grid">
           <div className="afield"><label>Envío gratis desde (COP)</label><input type="number" value={shipping.freeShippingThreshold || ''} onChange={(e) => set('shipping', 'freeShippingThreshold', Number(e.target.value) || 0)} /></div>
-          <div className="afield"><label>Métodos (JSON: [{'{id,name,description,cost}'}])</label>
-            <textarea value={JSON.stringify(shipping.methods || [], null, 1)} onChange={(e) => {
-              try { set('shipping', 'methods', JSON.parse(e.target.value)); } catch {}
-            }} />
+          <div className="afield" style={{ gridColumn: '1 / -1' }}>
+            <p className="checkout-note" role="status">FENMI ya no utiliza el antiguo método «Envío nacional» de $12.000 para calcular costos. Activa los métodos de Colombia abajo y selecciona «Cotización real por API» para domicilio. Para recibir en oficina debes registrar puntos autorizados y tarifas verificadas.</p>
           </div>
         </div>
         <ColombiaShippingAdmin value={shipping.colombia} onChange={(next) => set('shipping', 'colombia', next)} />

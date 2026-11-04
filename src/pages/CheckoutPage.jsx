@@ -19,6 +19,7 @@ import ShippingLocationPicker from '@/components/ShippingLocationPicker';
 import AveOnlineCityPicker from '@/components/AveOnlineCityPicker';
 import OfficialCarrierExplorer from '@/components/OfficialCarrierExplorer';
 import { needsWompiContract, canConfirmCheckoutPayment } from '@/utils/colombiaCheckout';
+import { deliveryMethodsForCheckout } from '@/utils/colombiaDeliverySetup';
 
 const STEPS = ['Datos y método de entrega', 'Pago o confirmación'];
 
@@ -49,7 +50,9 @@ export default function CheckoutPage() {
   useEffect(() => {
     cart.hydrate();
   }, []);
-  const [shippingMethods, setShippingMethods] = useState([]);
+  const [shippingMethods, setShippingMethods] = useState(() => deliveryMethodsForCheckout(null));
+  const [shippingMethodsLoading, setShippingMethodsLoading] = useState(true);
+  const [shippingLoadError, setShippingLoadError] = useState('');
   const [colombiaShipping, setColombiaShipping] = useState(null);
   const [quoteError, setQuoteError] = useState('');
   const [quote, setQuote] = useState(null);
@@ -134,12 +137,19 @@ export default function CheckoutPage() {
       .get()
       .then((s) => {
         const colombia = s.shipping?.colombia;
-        setColombiaShipping(colombia?.enabled ? colombia : null);
-        setShippingMethods(colombia?.enabled ? (colombia.options || []) : (s.shipping?.methods || []));
+        // Las cinco modalidades se muestran con su disponibilidad real.
+        // Nunca usar el precio heredado de 'Envio nacional' ($12.000).
+        setColombiaShipping(colombia || null);
+        setShippingMethods(deliveryMethodsForCheckout(colombia));
+        setShippingLoadError('');
+        setShippingMethodsLoading(false);
       })
       .catch(() => {
-        ui.showToast('No se pudieron cargar los métodos de envío');
-        setShippingMethods([]);
+        ui.showToast('No se pudo verificar la configuración de entregas');
+        setShippingLoadError('No pudimos verificar las modalidades en el servidor. Por seguridad, están bloqueadas hasta recuperar la conexión.');
+        setColombiaShipping(null);
+        setShippingMethods(deliveryMethodsForCheckout(null));
+        setShippingMethodsLoading(false);
       });
 
     // /payments/config trae publicKey + enlaces a los contratos que Wompi
@@ -697,10 +707,12 @@ export default function CheckoutPage() {
 
               <div className="checkout-card checkout-methods">
                 <div className="checkout-card-head"><div><h3>¿Cómo quieres recibir tu pedido?</h3><p>Elige entrega presencial, domicilio o recogida en sucursal autorizada.</p></div></div>
-                {shippingMethods.length === 0 && <p>No se han configurado métodos de entrega.</p>}
+                {shippingMethodsLoading && <p role="status">Cargando modalidades de entrega…</p>}
+                {!shippingMethodsLoading && colombiaShipping?.enabled === false && <p role="alert" className="shipping-quote-error">Los envíos de Colombia todavía no están activados. El precio fijo anterior de $12.000 no es una cotización oficial; FENMI debe configurar y habilitar una modalidad antes de cobrar.</p>}
+                {!shippingMethodsLoading && shippingLoadError && <p role="alert" className="shipping-quote-error">{shippingLoadError}</p>}
                 {shippingMethods.map((m) => <label key={m.id} className={`ship-option ${m.available === false ? 'shipping-option-disabled' : ''}`}>
                   <input type="radio" name="method" value={m.id} disabled={m.available === false} checked={form.methodId === m.id} onChange={() => set('methodId', m.id)} />
-                  <div><strong>{m.name}</strong><span>{m.description}</span>{m.available === false && <small>Disponible tras confirmar tarifas y puntos de recogida con FENMI.</small>}</div>
+                  <div><strong>{m.name}</strong><span>{m.description}</span>{m.available === false && <small>{m.unavailableReason || 'Disponible cuando FENMI confirme tarifas y puntos de recogida.'}</small>}</div>
                   {m.mode === 'MEETING' ? <span>Se paga al recibir</span> : m.rateMode === 'LIVE_AVEONLINE' ? <span>Tarifa real en línea</span> : m.rateMode === 'OFFICE_VERIFIED' ? <span>Tarifa verificada por oficina</span> : m.mode ? <span>Tarifa FENMI por destino</span> : <span>{money(Number(m.cost || 0))}</span>}
                 </label>)}
                 {colombiaShipping && <><p className="shipping-muted">Los envíos a domicilio configurados en modo API se cotizan en tiempo real desde Barranquilla. Las sucursales usan únicamente tarifas confirmadas por FENMI.</p><OfficialCarrierExplorer /></>}

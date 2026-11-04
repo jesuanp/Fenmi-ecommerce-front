@@ -1,5 +1,6 @@
 import React from 'react';
 import AveOnlineOfficeImport from '@/components/AveOnlineOfficeImport';
+import { prepareDeliverySettings } from '@/utils/colombiaDeliverySetup';
 
 const METHODS = [
   ['meeting_cash', 'Encuentro con vendedor · pago presencial'],
@@ -16,36 +17,46 @@ export default function ColombiaShippingAdmin({ value, onChange }) {
   const options = config.options || {};
   const locations = config.locations || [];
   const set = (patch) => onChange({ ...config, ...patch });
-  const patchOption = (id, patch) => set({ options: { ...options, [id]: { ...(options[id] || {}), ...patch } } });
+  const patchOption = (id, patch) => {
+    const defaults = id.endsWith('_home') ? { rateMode: 'LIVE_AVEONLINE', flatCost: null } : id.endsWith('_office') ? { rateMode: 'OFFICE_VERIFIED', flatCost: null } : {};
+    set({ options: { ...options, [id]: { ...defaults, ...(options[id] || {}), ...patch } } });
+  };
   const updateLocation = (id, patch) => set({ locations: locations.map((p) => p.id === id ? { ...p, ...patch, verified: false } : p) });
   const setVerified = (id, value) => set({ locations: locations.map((p) => p.id === id ? { ...p, verified: value } : p) });
   const addLocation = () => set({ locations: [...locations, { id: `point-${Date.now()}-${Math.floor(Math.random() * 10000)}`, type: 'OFFICE', carrier: 'ENVIA', name: '', address: '', city: '', state: '', lat: '', lng: '', active: false, verified: false, instructions: '' }] });
 
   return <div className="colombia-admin">
     <label className="colombia-admin-switch"><input type="checkbox" checked={config.enabled === true} onChange={(e) => set({ enabled: e.target.checked })} /> Activar métodos de entrega de Colombia</label>
+    <div className="colombia-admin-setup">
+      <button type="button" className="btn outline" onClick={() => onChange(prepareDeliverySettings(config))}>
+        Preparar las 5 modalidades acordadas (sin asignar precios)
+      </button>
+      <p>Este botón registra encuentro presencial, envía e Inter Rapidísimo para domicilio y oficina. No crea puntos ficticios ni tarifas. Guarda los cambios al final de Configuración; las opciones sin cotizador o punto verificado seguirán bloqueadas al cliente.</p>
+    </div>
     <p>Las cotizaciones automáticas reales se obtienen de AveOnline con origen Barranquilla, según las transportadoras activadas en tu cuenta. Para las sucursales, la API de cotización no documenta un precio individual por oficina: usa únicamente importes comprobados con la agencia.</p>
     <div className="colombia-admin-methods">
       {METHODS.map(([id, label]) => {
         const o = options[id] || {};
         const isMeeting = id === 'meeting_cash';
         const isOffice = id.endsWith('_office');
+        const rateMode = o.rateMode || (isOffice ? 'OFFICE_VERIFIED' : isMeeting ? 'MANUAL' : 'LIVE_AVEONLINE');
         return <div key={id} className="colombia-admin-method">
           <label><input type="checkbox" checked={o.enabled === true} onChange={(e) => patchOption(id, { enabled: e.target.checked })} /> <strong>{label}</strong></label>
           {!isMeeting && <div className="colombia-admin-rate">
             <label>Origen de la tarifa
-              <select value={o.rateMode || 'MANUAL'} onChange={(e) => patchOption(id, { rateMode: e.target.value, flatCost: null })}>
+              <select value={rateMode} onChange={(e) => patchOption(id, { rateMode: e.target.value, flatCost: null })}>
                 <option value="MANUAL">Tarifas confirmadas por FENMI (manual)</option>
                 {isOffice ? <option value="OFFICE_VERIFIED">Tarifa verificada por sucursal (vigencia 7 días)</option> : <option value="LIVE_AVEONLINE">Cotización real por API AveOnline (Barranquilla)</option>}
               </select>
             </label>
-            {o.rateMode === 'LIVE_AVEONLINE' && <p>Consulta la tarifa del transportador seleccionado por destino y medidas reales del paquete. Se necesitan AVEONLINE_USER, AVEONLINE_PASSWORD y AVEONLINE_IDEMPRESA en el VPS; nunca en Vercel.</p>}
-            {o.rateMode === 'OFFICE_VERIFIED' && <p>Cada sucursal requiere su tarifa, fecha de verificación y enlace oficial de respaldo. Una tarifa vencida no se puede cobrar.</p>}
-            {!['LIVE_AVEONLINE', 'OFFICE_VERIFIED'].includes(o.rateMode) && <><label>Tarifa plana confirmada (COP; vacío = solo tarifas por destino)
+            {rateMode === 'LIVE_AVEONLINE' && <p>Consulta la tarifa del transportador seleccionado por destino y medidas reales del paquete. Se necesitan AVEONLINE_USER, AVEONLINE_PASSWORD y AVEONLINE_IDEMPRESA en el VPS; nunca en Vercel.</p>}
+            {rateMode === 'OFFICE_VERIFIED' && <p>Cada sucursal requiere su tarifa, fecha de verificación y enlace oficial de respaldo. Una tarifa vencida no se puede cobrar.</p>}
+            {!['LIVE_AVEONLINE', 'OFFICE_VERIFIED'].includes(rateMode) && <><label>Tarifa plana confirmada (COP; vacío = solo tarifas por destino)
               <input type="number" min="0" step="1" placeholder="Sin tarifa asignada" value={o.flatCost ?? ''} onChange={(e) => patchOption(id, { flatCost: e.target.value === '' ? null : Number(e.target.value) })} />
             </label>
             </>}
             <label><input type="checkbox" checked={o.freeShippingEligible === true} onChange={(e) => patchOption(id, { freeShippingEligible: e.target.checked })} /> Permitir envío gratis por umbral de compra</label>
-            {!['LIVE_AVEONLINE', 'OFFICE_VERIFIED'].includes(o.rateMode) && <div className="colombia-admin-rate-rules">
+            {!['LIVE_AVEONLINE', 'OFFICE_VERIFIED'].includes(rateMode) && <div className="colombia-admin-rate-rules">
               <strong>Tarifas por destino</strong>
               {(o.rates || []).map((r, i) => <div className="colombia-admin-rule" key={i}>
                 <input aria-label="Departamento de tarifa" placeholder="Departamento" value={r.state || ''} onChange={(e) => patchOption(id, { rates: o.rates.map((item, j) => j === i ? { ...item, state: e.target.value } : item) })} />
