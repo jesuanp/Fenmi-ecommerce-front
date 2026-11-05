@@ -19,7 +19,7 @@ import ShippingLocationPicker from '@/components/ShippingLocationPicker';
 import AveOnlineCityPicker from '@/components/AveOnlineCityPicker';
 import OfficialCarrierExplorer from '@/components/OfficialCarrierExplorer';
 import { needsWompiContract, canConfirmCheckoutPayment } from '@/utils/colombiaCheckout';
-import { deliveryMethodsForCheckout } from '@/utils/colombiaDeliverySetup';
+import { deliveryMethodsForCheckout, FENMI_DELIVERY_GROUPS, selectedDeliveryGroup, deliveryMethodFor, changeDeliveryGroup } from '@/utils/colombiaDeliverySetup';
 
 const STEPS = ['Datos y método de entrega', 'Pago o confirmación'];
 
@@ -268,10 +268,11 @@ export default function CheckoutPage() {
   }, [wompiMode, cart.hydrated, cart.items.length]);
 
   const selectedMethod = shippingMethods.find((method) => String(method.id) === String(form.methodId));
+  const selectedGroup = selectedDeliveryGroup(form.methodId);
   const selectionNeedsPoint = selectedMethod?.mode === 'OFFICE' || selectedMethod?.mode === 'MEETING';
-  const addressNeeded = !colombiaShipping || selectedMethod?.mode === 'HOME';
+  const addressNeeded = selectedMethod?.mode === 'HOME';
   const needsLiveRate = selectedMethod?.rateMode === 'LIVE_AVEONLINE';
-  const selectedLocation = colombiaShipping?.locations?.find((point) => point.id === form.locationId) || null;
+  const selectedLocation = (colombiaShipping?.browseLocations || colombiaShipping?.locations || []).find((point) => point.id === form.locationId && point.type === selectedMethod?.mode && (selectedMethod?.mode === 'MEETING' || point.carrier === selectedMethod?.carrier)) || null;
   const requiresWompi = needsWompiContract(paymentConfig?.provider, form.methodId);
   const checkoutShipping = {
     recipient: form.recipient.trim(), phone: form.phone.trim(), line1: form.line1.trim(),
@@ -282,9 +283,9 @@ export default function CheckoutPage() {
   };
 
   useEffect(() => {
-    if (!form.methodId || cart.items.length === 0) { setQuote(null); setQuoteLoading(false); return undefined; }
-    if (selectionNeedsPoint && !form.locationId) { setQuote(null); setQuoteLoading(false); return undefined; }
-    if (addressNeeded && (!form.city.trim() || !form.state.trim() || !form.line1.trim())) { setQuote(null); setQuoteLoading(false); return undefined; }
+    if (!form.methodId || cart.items.length === 0 || !selectedMethod?.available) { setQuote(null); setQuoteLoading(false); setQuoteError(''); return undefined; }
+    if (selectionNeedsPoint && (!selectedLocation || selectedLocation.readyForCheckout === false)) { setQuote(null); setQuoteLoading(false); return undefined; }
+    if (addressNeeded && (!form.city.trim() || !form.state.trim() || !form.line1.trim() || form.recipient.trim().length < 2 || !/^(\+57\s?)?\d{10}$/.test(form.phone.trim()))) { setQuote(null); setQuoteLoading(false); return undefined; }
     let active = true;
     setQuote(null);
     setQuoteLoading(true);
@@ -296,13 +297,13 @@ export default function CheckoutPage() {
         .finally(() => { if (active) setQuoteLoading(false); });
     }, 280);
     return () => { active = false; clearTimeout(timer); };
-  }, [form.methodId, form.locationId, form.city, form.state, form.line1, form.recipient, form.phone, cart.items.length, cart.subtotal(), cart.items.map((item) => `${item.variantId}-${item.quantity}`).join('|'), quoteRefresh]);
+  }, [form.methodId, form.locationId, selectedMethod?.available, selectedLocation?.id, form.city, form.state, form.line1, form.recipient, form.phone, cart.items.length, cart.subtotal(), cart.items.map((item) => `${item.variantId}-${item.quantity}`).join('|'), quoteRefresh]);
 
   const infoValid = form.firstName.trim().length > 1 && form.lastName.trim().length > 1 && form.email.trim().includes('@') && /^(\+57\s?)?\d{10}$/.test(form.phone.trim());
   const postalCodeValid = isOptionalPostalCodeValid(form.postal_code);
   const addrValid = form.recipient.trim().length > 1 && (selectionNeedsPoint ? !!selectedLocation : form.line1.trim().length >= 4 && form.city.trim().length > 1 && form.state.trim().length > 1 && postalCodeValid);
   const quoteExpired = needsLiveRate && quote?.quoteExpiresAt && Date.parse(quote.quoteExpiresAt) <= Date.now();
-  const methodValid = !!selectedMethod && selectedMethod.available !== false && !quoteLoading && !quoteExpired && quote?.methodId === form.methodId;
+  const methodValid = !!selectedMethod && selectedMethod.available !== false && (!selectionNeedsPoint || selectedLocation?.readyForCheckout !== false) && !quoteLoading && !quoteExpired && quote?.methodId === form.methodId;
 
   useEffect(() => {
     if (!needsLiveRate || !quote?.quoteExpiresAt) return undefined;
@@ -451,7 +452,7 @@ export default function CheckoutPage() {
     if (!methodValid) {
       setStep(0);
       setQuoteRefresh((value) => value + 1);
-      ui.showToast('La tarifa de envío venció o cambió. Revisa el importe actualizado antes de pagar.');
+      ui.showToast(selectedMethod?.available === false ? (selectedMethod.unavailableReason || 'Esta modalidad aún no puede confirmarse.') : 'La tarifa de envío venció o cambió. Revisa el importe actualizado antes de pagar.');
       return;
     }
     if (submittingRef.current) return;
@@ -706,16 +707,37 @@ export default function CheckoutPage() {
               </div>
 
               <div className="checkout-card checkout-methods">
-                <div className="checkout-card-head"><div><h3>¿Cómo quieres recibir tu pedido?</h3><p>Elige entrega presencial, domicilio o recogida en sucursal autorizada.</p></div></div>
-                {shippingMethodsLoading && <p role="status">Cargando modalidades de entrega…</p>}
-                {!shippingMethodsLoading && colombiaShipping?.enabled === false && <p role="alert" className="shipping-quote-error">Los envíos de Colombia todavía no están activados. El precio fijo anterior de $12.000 no es una cotización oficial; FENMI debe configurar y habilitar una modalidad antes de cobrar.</p>}
+                <div className="checkout-card-head"><div>
+                  <h3>¿Cómo quieres recibir tu pedido?</h3>
+                  <p>Selecciona un medio de entrega. Después podrás indicar si quieres recibirlo en casa o recogerlo en una sucursal.</p>
+                </div></div>
+                {shippingMethodsLoading && <p role="status">Comprobando servicios de entrega…</p>}
                 {!shippingMethodsLoading && shippingLoadError && <p role="alert" className="shipping-quote-error">{shippingLoadError}</p>}
-                {shippingMethods.map((m) => <label key={m.id} className={`ship-option ${m.available === false ? 'shipping-option-disabled' : ''}`}>
-                  <input type="radio" name="method" value={m.id} disabled={m.available === false} checked={form.methodId === m.id} onChange={() => set('methodId', m.id)} />
-                  <div><strong>{m.name}</strong><span>{m.description}</span>{m.available === false && <small>{m.unavailableReason || 'Disponible cuando FENMI confirme tarifas y puntos de recogida.'}</small>}</div>
-                  {m.mode === 'MEETING' ? <span>Se paga al recibir</span> : m.rateMode === 'LIVE_AVEONLINE' ? <span>Tarifa real en línea</span> : m.rateMode === 'OFFICE_VERIFIED' ? <span>Tarifa verificada por oficina</span> : m.mode ? <span>Tarifa FENMI por destino</span> : <span>{money(Number(m.cost || 0))}</span>}
-                </label>)}
-                {colombiaShipping && <><p className="shipping-muted">Los envíos a domicilio configurados en modo API se cotizan en tiempo real desde Barranquilla. Las sucursales usan únicamente tarifas confirmadas por FENMI.</p><OfficialCarrierExplorer /></>}
+                <div className="checkout-delivery-groups" role="radiogroup" aria-label="Cómo quieres recibir tu pedido">
+                  {FENMI_DELIVERY_GROUPS.map((group) => <label key={group.id} className="ship-option checkout-delivery-group">
+                    <input type="radio" name="delivery-group" value={group.id} checked={selectedGroup === group.id} onChange={() => set('methodId', changeDeliveryGroup(group.id, form.methodId))} />
+                    <div><strong>{group.name}</strong><span>{group.description}</span></div>
+                  </label>)}
+                </div>
+                {selectedGroup && selectedGroup !== 'meeting' && <fieldset className="checkout-delivery-preference">
+                  <legend>¿Dónde quieres recibir tu pedido?</legend>
+                  <label className="ship-option">
+                    <input type="radio" name="delivery-place" value="HOME" checked={selectedMethod?.mode === 'HOME'} onChange={() => set('methodId', deliveryMethodFor(selectedGroup, 'HOME'))} />
+                    <div><strong>En mi casa</strong><span>Indicaré la dirección y el municipio de destino.</span></div>
+                  </label>
+                  <label className="ship-option">
+                    <input type="radio" name="delivery-place" value="OFFICE" checked={selectedMethod?.mode === 'OFFICE'} onChange={() => set('methodId', deliveryMethodFor(selectedGroup, 'OFFICE'))} />
+                    <div><strong>Recoger en una sucursal</strong><span>Seleccionaré un punto autorizado para recibir pedidos de FENMI.</span></div>
+                  </label>
+                </fieldset>}
+                {selectedMethod?.available === false && !shippingMethodsLoading && <p className="shipping-quote-error" role="status">
+                  Puedes elegir esta modalidad, pero aún no puedes confirmar el pedido: {selectedMethod.unavailableReason || 'FENMI debe habilitar el servicio y verificar la entrega.'}
+                </p>}
+                {selectedGroup && <p className="shipping-muted">
+                  {selectedGroup === 'meeting'
+                    ? 'El cliente debe escoger un punto de encuentro autorizado. No se realiza un cobro por Wompi: se paga en persona al recibir el producto.'
+                    : 'Las tarifas para domicilio se verifican desde Barranquilla. Para recoger en oficina se requiere un punto autorizado y una tarifa vigente.'}
+                </p>}
               </div>
 
               {selectedMethod && <div className="checkout-card">
@@ -728,9 +750,11 @@ export default function CheckoutPage() {
                   <Field label="Teléfono de contacto" value={form.phone} onChange={(v) => set('phone', v)} placeholder="3001234567" autoComplete="shipping tel" inputMode="tel" required />
                 </div>
                 {selectionNeedsPoint && <ShippingLocationPicker
-                  locations={(colombiaShipping?.locations || []).filter((point) => point.type === selectedMethod.mode && (selectedMethod.mode === 'MEETING' || point.carrier === selectedMethod.carrier))}
+                  locations={(colombiaShipping?.browseLocations || colombiaShipping?.locations || []).filter((point) => point.type === selectedMethod.mode && (selectedMethod.mode === 'MEETING' || point.carrier === selectedMethod.carrier))}
                   option={selectedMethod} selectedId={form.locationId} onSelect={(locationId) => set('locationId', locationId)}
                 />}
+                {selectedLocation?.readyForCheckout === false && <p className="shipping-quote-error" role="status">Este punto todavía no tiene habilitada la entrega para pedidos FENMI. Puedes elegir otro punto, pero no podemos confirmar la compra en este lugar hasta que FENMI lo active.</p>}
+                {selectedMethod.mode === 'OFFICE' && <OfficialCarrierExplorer />}
                 {addressNeeded && <>
                   {usingSaved && savedAddress && <div className="checkout-banner"><span>Usamos tu última dirección guardada.</span><button type="button" className="text-link checkout-banner-action" onClick={discardSavedAddress}>Usar otra</button></div>}
                   <div className="checkout-grid">

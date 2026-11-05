@@ -93,7 +93,9 @@ export default function ShippingLocationPicker({ locations, option, selectedId, 
 
   return <div className="shipping-location-picker">
     <h3>{option?.mode === 'MEETING' ? 'Escoge el lugar del encuentro' : 'Selecciona dónde recoger tu pedido'}</h3>
-    <p className="shipping-muted">Solo puedes elegir puntos confirmados por FENMI. Consulta también la red oficial para conocer sucursales cercanas.</p>
+    <p className="shipping-muted">{option?.mode === 'MEETING'
+      ? 'Escoge un lugar publicado y verificado por FENMI. El pago se realiza allí cuando recibas el producto.'
+      : 'Escoge una sucursal confirmada por FENMI. La entrega solo puede pagarse cuando la oficina tenga una tarifa válida.'}</p>
     <label className="checkout-field"><span>Buscar por ciudad, departamento o dirección</span>
       <input className="field" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Ej. Bogotá, Medellín, dirección…" />
     </label>
@@ -101,7 +103,12 @@ export default function ShippingLocationPicker({ locations, option, selectedId, 
       <div className="shipping-location-list" role="radiogroup" aria-label="Puntos disponibles para recoger">
         {filtered.length ? filtered.map((p) => <button key={p.id} type="button" role="radio" aria-checked={selectedId === p.id} className={`shipping-location-item ${selectedId === p.id ? 'selected' : ''}`} onClick={() => onSelect(p.id)}>
           <strong>{p.name}</strong><span>{p.address}</span><small>{p.city}, {p.state}</small>
-        </button>) : <div className="shipping-muted">No hay puntos habilitados que coincidan con esta búsqueda.</div>}
+          {p.readyForCheckout === false && <small className="shipping-location-warning">Pendiente de habilitación para recibir pedidos</small>}
+        </button>) : <div className="shipping-muted">{locations.length
+          ? 'No hay puntos que coincidan con tu búsqueda.'
+          : option?.mode === 'MEETING'
+            ? 'FENMI aún no ha publicado puntos de encuentro. Debe registrarlos en Administración → Configuración → Envíos.'
+            : 'Aún no hay sucursales habilitadas por FENMI para esta transportadora.'}</div>}
       </div>
       <BranchMap locations={filtered} selectedId={selectedId} onSelect={onSelect} />
     </div>

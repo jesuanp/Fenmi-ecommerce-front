@@ -8,6 +8,34 @@ export const FENMI_DELIVERY_OPTIONS = Object.freeze([
   { id: 'inter_office', name: 'Inter Rapidísimo · recoger en oficina', mode: 'OFFICE', carrier: 'INTERRAPIDISIMO', description: 'Recogida en una oficina autorizada.' }
 ]);
 
+// La elección del cliente es independiente de que la cotización y el despacho
+// estén listos. El servidor sigue validando la disponibilidad antes de crear el pedido.
+export const FENMI_DELIVERY_GROUPS = Object.freeze([
+  { id: 'meeting', name: 'Pago contra entrega', description: 'Recoge el producto en un punto de encuentro y paga cuando lo recibas.', methodId: 'meeting_cash' },
+  { id: 'envia', name: 'envía', description: 'Escoge entrega en casa o recogida en sucursal.' },
+  { id: 'inter', name: 'Inter Rapidísimo', description: 'Escoge entrega en casa o recogida en sucursal.' }
+]);
+
+export function selectedDeliveryGroup(methodId) {
+  if (methodId === 'meeting_cash') return 'meeting';
+  if (methodId === 'envia_home' || methodId === 'envia_office') return 'envia';
+  if (methodId === 'inter_home' || methodId === 'inter_office') return 'inter';
+  return '';
+}
+
+export function deliveryMethodFor(group, preference = 'HOME') {
+  if (group === 'meeting') return 'meeting_cash';
+  if (!['envia', 'inter'].includes(group)) return '';
+  return `${group}_${preference === 'OFFICE' ? 'office' : 'home'}`;
+}
+
+export function changeDeliveryGroup(group, currentMethodId = '') {
+  if (group === 'meeting') return 'meeting_cash';
+  if (!['envia', 'inter'].includes(group)) return '';
+  const currentIsOffice = currentMethodId.endsWith('_office');
+  return deliveryMethodFor(group, currentIsOffice ? 'OFFICE' : 'HOME');
+}
+
 export function deliveryMethodsForCheckout(colombia) {
   const liveMethods = Array.isArray(colombia?.options) ? colombia.options : [];
   const valid = new Map(liveMethods.filter((m) => m && FENMI_DELIVERY_OPTIONS.some((base) => base.id === m.id)).map((m) => [m.id, m]));
