@@ -34,6 +34,9 @@ export default function AdminOrderDetailPage() {
   const [trackingNumber, setTrackingNumber] = useState('');
   const [shippingBusy, setShippingBusy] = useState(false);
   const [meetingBusy, setMeetingBusy] = useState(false);
+  const [rateBusy, setRateBusy] = useState(false);
+  const [shippingRate, setShippingRate] = useState('');
+  const [shippingRateSource, setShippingRateSource] = useState('');
 
   useEffect(() => { adminApi.getOrder(id).then(setOrder); }, [id]);
 
@@ -81,6 +84,22 @@ export default function AdminOrderDetailPage() {
     } finally {
       setShippingBusy(false);
     }
+  };
+
+  const confirmShippingRate = async (e) => {
+    e.preventDefault();
+    const cost = Number(shippingRate);
+    if (!Number.isSafeInteger(cost) || cost < 0) return ui.showToast('Indica el valor real del transporte en COP.');
+    if (shippingRateSource.trim().length < 8) return ui.showToast('Anota la referencia verificable del cotizador o la transportadora.');
+    if (!window.confirm(`¿Confirmas que verificaste el flete de ${money(cost)} y que el cliente podrá pagar el total actualizado?`)) return;
+    setRateBusy(true);
+    try {
+      const updated = await adminApi.confirmHomeShippingQuote(id, { cost, reference: shippingRateSource.trim() });
+      setOrder(updated);
+      ui.showToast('Flete confirmado. El cliente ya puede consultar y pagar el importe completo.');
+    } catch (error) {
+      ui.showToast(error.response?.data?.error?.message || 'No se pudo confirmar la cotización.');
+    } finally { setRateBusy(false); }
   };
 
   const confirmMeeting = async () => {
@@ -257,7 +276,15 @@ export default function AdminOrderDetailPage() {
           <p>{order.shipping?.line1} {order.shipping?.line2 || ''}</p>
           <p>{order.shipping?.city}, {order.shipping?.state}</p>
           <p>{order.shipping?.phone}</p>
-          <p>Método: {order.shipping?.method?.methodName} · {money(order.shippingTotal)}</p>
+          <p>Método: {order.shipping?.method?.methodName} · {order.shipping?.method?.quotePending ? 'Flete por cotizar' : money(order.shippingTotal)}</p>
+          {order.shipping?.method?.quotePending && order.status === 'PENDING_PAYMENT' && <form onSubmit={confirmShippingRate} className="shipping-admin-rate-form" style={{ display: 'grid', gap: 9, padding: 12, border: '1px solid var(--border)', borderRadius: 8 }}>
+            <strong>Confirmar tarifa real antes de cobrar</strong>
+            <p style={{ fontSize: 13 }}>El cliente ya dejó su dirección. Consulta el precio con {order.shipping?.method?.carrier === 'ENVIA' ? 'envía' : 'Inter Rapidísimo'} y registra aquí el costo verificado. No uses los $12.000 antiguos como tarifa predeterminada.</p>
+            <label>Costo del flete en COP<input type="number" min="0" step="1" required value={shippingRate} onChange={(e) => setShippingRate(e.target.value)} placeholder="Costo confirmado" /></label>
+            <label>Referencia de la cotización / fuente<input required minLength={8} maxLength={300} value={shippingRateSource} onChange={(e) => setShippingRateSource(e.target.value)} placeholder="Número de cotización o URL oficial" /></label>
+            <button className="btn lime" type="submit" disabled={rateBusy}>{rateBusy ? 'Guardando…' : 'Confirmar flete para habilitar pago'}</button>
+          </form>}
+          {order.shipping?.method?.mode === 'HOME' && !order.shipping?.method?.quotePending && order.shipping?.method?.tariffSource === 'ADMIN_VERIFIED_RATE' && <p>Tarifa confirmada: <strong>{order.shipping?.method?.tariffReference}</strong>. El cliente ya puede pagar desde su enlace de solicitud.</p>}
           {order.shipping?.method?.location && <div className="shipping-admin-delivery-point"><strong>Punto de retiro o encuentro:</strong><p>{order.shipping.method.location.name}</p><p>{order.shipping.method.location.address}, {order.shipping.method.location.city}, {order.shipping.method.location.state}</p></div>}
           {order.shipping?.method?.mode === 'MEETING' && order.paymentStatus === 'PENDING' && <p><strong>Pago al recibir:</strong> no hay cobro por Wompi. La entrega y el cobro requieren confirmación del vendedor.</p>}
           {order.shipping?.method?.mode === 'MEETING' && order.paymentStatus === 'PENDING' && order.status === 'PENDING_PAYMENT' && <button type="button" disabled={meetingBusy} className="btn lime" onClick={confirmMeeting}>{meetingBusy ? 'Confirmando…' : 'Confirmar efectivo recibido y producto entregado'}</button>}

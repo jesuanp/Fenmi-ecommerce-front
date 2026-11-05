@@ -12,8 +12,8 @@ export const FENMI_DELIVERY_OPTIONS = Object.freeze([
 // estén listos. El servidor sigue validando la disponibilidad antes de crear el pedido.
 export const FENMI_DELIVERY_GROUPS = Object.freeze([
   { id: 'meeting', name: 'Pago contra entrega', description: 'Recoge el producto en un punto de encuentro y paga cuando lo recibas.', methodId: 'meeting_cash' },
-  { id: 'envia', name: 'envía', description: 'Escoge entrega en casa o recogida en sucursal.' },
-  { id: 'inter', name: 'Inter Rapidísimo', description: 'Escoge entrega en casa o recogida en sucursal.' }
+  { id: 'envia', name: 'envía', description: 'Recíbelo en la dirección de tu casa.' },
+  { id: 'inter', name: 'Inter Rapidísimo', description: 'Recíbelo en la dirección de tu casa.' }
 ]);
 
 export function selectedDeliveryGroup(methodId) {
@@ -32,8 +32,8 @@ export function deliveryMethodFor(group, preference = 'HOME') {
 export function changeDeliveryGroup(group, currentMethodId = '') {
   if (group === 'meeting') return 'meeting_cash';
   if (!['envia', 'inter'].includes(group)) return '';
-  const currentIsOffice = currentMethodId.endsWith('_office');
-  return deliveryMethodFor(group, currentIsOffice ? 'OFFICE' : 'HOME');
+  // El retiro en oficinas se encuentra deshabilitado temporalmente.
+  return deliveryMethodFor(group, 'HOME');
 }
 
 export function deliveryMethodsForCheckout(colombia) {
@@ -41,7 +41,7 @@ export function deliveryMethodsForCheckout(colombia) {
   const valid = new Map(liveMethods.filter((m) => m && FENMI_DELIVERY_OPTIONS.some((base) => base.id === m.id)).map((m) => [m.id, m]));
   return FENMI_DELIVERY_OPTIONS.map((base) => {
     const official = valid.get(base.id);
-    const available = colombia?.enabled === true && official?.available === true;
+    const available = official?.available === true; // El servidor permite solicitar domicilio/encuentro sin activar tarifas.
     return {
       ...base,
       ...(official || {}),

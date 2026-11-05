@@ -18,6 +18,7 @@ const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 const CheckoutSuccessPage = lazy(() => import('./pages/CheckoutSuccessPage'));
 const MeetingReservationPage = lazy(() => import('./pages/MeetingReservationPage'));
+const HomeShippingRequestPage = lazy(() => import('./pages/HomeShippingRequestPage'));
 const AccountMeetingsPage = lazy(() => import('./pages/AccountMeetingsPage'));
 const AccountOrdersPage = lazy(() => import('./pages/AccountOrdersPage'));
 const AccountOrderDetailPage = lazy(() => import('./pages/AccountOrderDetailPage'));
@@ -82,6 +83,7 @@ export default function App() {
           <Route path="checkout" element={<Lazy><CheckoutPage /></Lazy>} />
           <Route path="checkout/success/:orderNumber" element={<Lazy><CheckoutSuccessPage /></Lazy>} />
           <Route path="checkout/meeting/:orderNumber" element={<Lazy><MeetingReservationPage /></Lazy>} />
+          <Route path="checkout/shipping/:orderNumber" element={<Lazy><HomeShippingRequestPage /></Lazy>} />
           <Route path="contact" element={<ContactPage />} />
           <Route path="policies" element={<PoliciesPage />} />
           <Route path="login" element={<LoginPage />} />

@@ -8,9 +8,9 @@ test('las cinco modalidades aparecen, sin habilitar un cobro cuando faltan ajust
   assert.ok(methods.every((m) => m.available === false && m.unavailableReason));
 });
 
-test('no se acepta un método disponible si el módulo Colombia está apagado', () => {
+test('el checkout respeta la capacidad del servidor para crear solicitudes aun sin módulo Colombia activado', () => {
   const methods = deliveryMethodsForCheckout({ enabled: false, options: [{id:'envia_home', available:true}] });
-  assert.equal(methods.find((m) => m.id === 'envia_home').available, false);
+  assert.equal(methods.find((m) => m.id === 'envia_home').available, true);
 });
 
 test('preserva la disponibilidad y razón del backend', () => {

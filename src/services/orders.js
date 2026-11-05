@@ -25,6 +25,9 @@ export const orderApi = {
   async meeting(number) {
     return (await client.get(`/orders/meeting/${encodeURIComponent(number)}`)).data.data;
   },
+  async shippingRequest(number) {
+    return (await client.get(`/orders/shipping/${encodeURIComponent(number)}`, { params: { _t: Date.now() } })).data.data;
+  },
   async meetings() {
     return (await client.get('/orders/meetings', { params: { _t: Date.now() } })).data.data;
   },

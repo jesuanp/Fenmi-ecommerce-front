@@ -51,6 +51,7 @@ export const adminApi = {
   getOrder: (id) => client.get(`/admin/orders/${id}`).then((r) => r.data.data),
   changeOrderStatus: (id, toStatus, note, shipment) => client.patch(`/admin/orders/${id}/status`, { toStatus, note, shipment }).then((r) => r.data.data),
   updateOrderShipment: (id, shipment) => client.patch(`/admin/orders/${id}/shipping`, shipment).then((r) => r.data.data),
+  confirmHomeShippingQuote: (id, payload) => client.patch(`/admin/orders/${id}/confirm-shipping-quote`, payload).then((r) => r.data.data),
   approveOrderPayment: (paymentId) => client.post(`/admin/orders/${paymentId}/approve-payment`).then((r) => r.data.data),
   rejectOrderPayment: (paymentId, reason) => client.post(`/admin/orders/${paymentId}/reject-payment`, { reason }).then((r) => r.data.data),
   // Consulta el estado real en Wompi y confirma si quedó APPROVED.
