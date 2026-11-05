@@ -46,7 +46,7 @@ export default function AveOnlineOfficeImport({ locations, onImport }) {
 
   return <section className="colombia-admin-office-import">
     <h4>Buscar oficinas registradas por la transportadora</h4>
-    <p>El directorio de AveOnline devuelve puntos para consulta, pero no confirma la tarifa ni la disponibilidad para retiro. Al agregar una oficina queda desactivada hasta validar coordenadas, aceptación de paquetes y cotización.</p>
+    <p>El directorio de AveOnline devuelve puntos para consulta, pero no confirma la tarifa ni la disponibilidad para retiro. Al agregar una oficina queda desactivada hasta verificar que acepte pedidos para retiro y confirmar una tarifa vigente.</p>
     <div className="colombia-admin-office-query">
       <label>Transportadora
         <select value={carrier} onChange={(e) => { setCarrier(e.target.value); setOffices([]); setError(''); }}>

@@ -98,7 +98,7 @@ export default function ColombiaShippingAdmin({ value, onChange }) {
     <AveOnlineOfficeImport locations={locations} onImport={(point) => set({ locations: [...locations, point] })} />
     <h4>Puntos habilitados para retiro o encuentro</h4>
     <p>Consulta el localizador oficial de cada empresa, confirma con ella si recibe envíos para retiro y registra sus datos. Si usas tarifas por sucursal, guarda el importe real, la fecha y la referencia de la cotización oficial. No se cobra una tarifa vencida.</p>
-    <p><a href="https://envia.co/service-points" rel="noopener noreferrer" target="_blank">Mapa de envía ↗</a> · <a href="https://interrapidisimo.com/oficina-mas-cercana/" rel="noopener noreferrer" target="_blank">Mapa de Inter Rapidísimo ↗</a></p>
+    <p><a href="https://envia.co/puntos-de-atencion" rel="noopener noreferrer" target="_blank">Directorio oficial de envía ↗</a> · <a href="https://www3.interrapidisimo.com/SitioOficinaMasCercana/" rel="noopener noreferrer" target="_blank">Directorio oficial de Inter Rapidísimo ↗</a></p>
     {locations.map((p) => <div key={p.id} className="colombia-admin-point">
       <div className="colombia-admin-point-row">
         <label>Tipo<select value={p.type || 'OFFICE'} onChange={(e) => updateLocation(p.id, { type: e.target.value, carrier: e.target.value === 'MEETING' ? null : 'ENVIA' })}><option value="OFFICE">Sucursal de transportadora</option><option value="MEETING">Punto de encuentro con el vendedor</option></select></label>
@@ -107,8 +107,6 @@ export default function ColombiaShippingAdmin({ value, onChange }) {
         <label>Dirección<input value={p.address || ''} onChange={(e) => updateLocation(p.id, { address: e.target.value })} /></label>
         <label>Ciudad<input value={p.city || ''} onChange={(e) => updateLocation(p.id, { city: e.target.value })} /></label>
         <label>Departamento<input value={p.state || ''} onChange={(e) => updateLocation(p.id, { state: e.target.value })} /></label>
-        <label>Latitud<input type="number" step="any" value={p.lat ?? ''} onChange={(e) => updateLocation(p.id, { lat: e.target.value })} /></label>
-        <label>Longitud<input type="number" step="any" value={p.lng ?? ''} onChange={(e) => updateLocation(p.id, { lng: e.target.value })} /></label>
         {p.type === 'OFFICE' && <>
           <label>Tarifa oficial de esta sucursal (COP)<input type="number" min="0" step="1" value={p.rateCost ?? ''} onChange={(e) => updateLocation(p.id, { rateCost: e.target.value === '' ? null : Number(e.target.value) })} /></label>
           <label>Fecha de cotización<input type="date" value={p.rateCheckedAt || ''} onChange={(e) => updateLocation(p.id, { rateCheckedAt: e.target.value })} /></label>

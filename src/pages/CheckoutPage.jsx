@@ -17,7 +17,6 @@ import { loadWompiWidget } from '@/utils/loadWompi';
 import { buildWompiWebCheckoutUrl, shouldUseWompiWebCheckout, shouldPreferHostedWompiCheckout } from '@/utils/wompiWebCheckout';
 import ShippingLocationPicker from '@/components/ShippingLocationPicker';
 import AveOnlineCityPicker from '@/components/AveOnlineCityPicker';
-import OfficialCarrierExplorer from '@/components/OfficialCarrierExplorer';
 import { needsWompiContract, canConfirmCheckoutPayment } from '@/utils/colombiaCheckout';
 import { deliveryMethodsForCheckout, FENMI_DELIVERY_GROUPS, selectedDeliveryGroup, deliveryMethodFor, changeDeliveryGroup } from '@/utils/colombiaDeliverySetup';
 
@@ -303,7 +302,7 @@ export default function CheckoutPage() {
   const postalCodeValid = isOptionalPostalCodeValid(form.postal_code);
   const addrValid = form.recipient.trim().length > 1 && (selectionNeedsPoint ? !!selectedLocation : form.line1.trim().length >= 4 && form.city.trim().length > 1 && form.state.trim().length > 1 && postalCodeValid);
   const quoteExpired = needsLiveRate && quote?.quoteExpiresAt && Date.parse(quote.quoteExpiresAt) <= Date.now();
-  const methodValid = !!selectedMethod && selectedMethod.available !== false && (!selectionNeedsPoint || selectedLocation?.readyForCheckout !== false) && !quoteLoading && !quoteExpired && quote?.methodId === form.methodId;
+  const methodValid = !!selectedMethod && selectedMethod.available !== false && (!selectionNeedsPoint || (selectedLocation && selectedLocation.readyForCheckout !== false)) && !quoteLoading && !quoteExpired && quote?.methodId === form.methodId;
 
   useEffect(() => {
     if (!needsLiveRate || !quote?.quoteExpiresAt) return undefined;
@@ -743,7 +742,7 @@ export default function CheckoutPage() {
               {selectedMethod && <div className="checkout-card">
                 <div className="checkout-card-head"><div>
                   <h3>{selectedMethod.mode === 'MEETING' ? 'Entrega presencial' : selectedMethod.mode === 'OFFICE' ? 'Recogida en sucursal' : 'Dirección de envío'}</h3>
-                  <p>{selectedMethod.mode === 'MEETING' ? 'Coordinaremos contigo un encuentro en el lugar seleccionado. El pago se realiza en persona.' : selectedMethod.mode === 'OFFICE' ? 'Únicamente mostramos sucursales donde FENMI haya confirmado la recepción de pedidos para retiro.' : 'Indica la dirección en la que recibirás tu compra.'}</p>
+                  <p>{selectedMethod.mode === 'MEETING' ? 'Coordinaremos contigo un encuentro en el lugar seleccionado. El pago se realiza en persona.' : selectedMethod.mode === 'OFFICE' ? 'Busca el municipio y elige una oficina de la lista. Para confirmar el pedido, FENMI debe haber autorizado el retiro en esa oficina.' : 'Indica la dirección en la que recibirás tu compra.'}</p>
                 </div></div>
                 <div className="checkout-grid">
                   <Field label="Persona que recibe" value={form.recipient} onChange={(v) => set('recipient', v)} placeholder="Nombre del destinatario" autoComplete="shipping name" required />
@@ -754,7 +753,6 @@ export default function CheckoutPage() {
                   option={selectedMethod} selectedId={form.locationId} onSelect={(locationId) => set('locationId', locationId)}
                 />}
                 {selectedLocation?.readyForCheckout === false && <p className="shipping-quote-error" role="status">Este punto todavía no tiene habilitada la entrega para pedidos FENMI. Puedes elegir otro punto, pero no podemos confirmar la compra en este lugar hasta que FENMI lo active.</p>}
-                {selectedMethod.mode === 'OFFICE' && <OfficialCarrierExplorer />}
                 {addressNeeded && <>
                   {usingSaved && savedAddress && <div className="checkout-banner"><span>Usamos tu última dirección guardada.</span><button type="button" className="text-link checkout-banner-action" onClick={discardSavedAddress}>Usar otra</button></div>}
                   <div className="checkout-grid">

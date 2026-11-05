@@ -1,122 +1,91 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { orderApi } from '@/services/orders';
+import AveOnlineCityPicker from '@/components/AveOnlineCityPicker';
+import { mergeOfficesForSelect } from '@/utils/officeSelection';
 
-const OFFICIAL = {
-  ENVIA: { title: 'envía', url: 'https://envia.co/service-points' },
-  INTERRAPIDISIMO: { title: 'Inter Rapidísimo', url: 'https://interrapidisimo.com/oficina-mas-cercana/' }
-};
+const OFFICIAL = Object.freeze({
+  ENVIA: { title: 'envía', url: 'https://envia.co/puntos-de-atencion' },
+  INTERRAPIDISIMO: { title: 'Inter Rapidísimo', url: 'https://www3.interrapidisimo.com/SitioOficinaMasCercana/' }
+});
 
-let leafletPromise;
-function loadLeaflet() {
-  if (window.L?.map) return Promise.resolve(window.L);
-  if (leafletPromise) return leafletPromise;
-  leafletPromise = new Promise((resolve, reject) => {
-    if (!document.querySelector('[data-fenmi-leaflet-style]')) {
-      const css = document.createElement('link');
-      css.rel = 'stylesheet';
-      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      css.dataset.fenmiLeafletStyle = 'true';
-      document.head.appendChild(css);
-    }
-    const existing = document.querySelector('[data-fenmi-leaflet-script]');
-    const script = existing || document.createElement('script');
-    if (!existing) {
-      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      script.async = true;
-      script.dataset.fenmiLeafletScript = 'true';
-    }
-    const timeout = window.setTimeout(() => reject(new Error('Mapa no disponible')), 12000);
-    const finish = () => { window.clearTimeout(timeout); resolve(window.L); };
-    const fail = () => { window.clearTimeout(timeout); reject(new Error('El mapa no pudo cargarse')); };
-    script.addEventListener('load', finish, { once: true });
-    script.addEventListener('error', fail, { once: true });
-    if (!existing) document.head.appendChild(script);
-    else if (window.L?.map) finish();
-  }).catch((err) => { leafletPromise = null; throw err; });
-  return leafletPromise;
-}
-
-function BranchMap({ locations, selectedId, onSelect }) {
-  const node = useRef(null);
-  const mapRef = useRef(null);
-  const markers = useRef(null);
-  const [failed, setFailed] = useState(false);
-  const points = useMemo(() => locations.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng)), [locations]);
-
-  useEffect(() => {
-    if (!points.length || !node.current) return undefined;
-    let mounted = true;
-    loadLeaflet().then((L) => {
-      if (!mounted || !node.current) return;
-      const map = L.map(node.current, { scrollWheelZoom: false });
-      mapRef.current = map;
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors', maxZoom: 18
-      }).addTo(map);
-      markers.current = L.layerGroup().addTo(map);
-      const bounds = [];
-      points.forEach((point) => {
-        const marker = L.marker([point.lat, point.lng]).addTo(markers.current);
-        marker.bindPopup(`<strong>${escapeMarkup(point.name)}</strong><div>${escapeMarkup(point.address)}</div>`);
-        marker.on('click', () => onSelect(point.id));
-        bounds.push([point.lat, point.lng]);
-      });
-      if (bounds.length === 1) map.setView(bounds[0], 15);
-      else map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14 });
-      window.setTimeout(() => map.invalidateSize(), 150);
-    }).catch(() => { if (mounted) setFailed(true); });
-    return () => { mounted = false; if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
-  }, [points]);
-
-  useEffect(() => {
-    const selected = points.find((p) => p.id === selectedId);
-    if (mapRef.current && selected) mapRef.current.setView([selected.lat, selected.lng], Math.max(mapRef.current.getZoom(), 13), { animate: true });
-  }, [selectedId, points]);
-
-  if (!points.length) return <p className="shipping-map-hint">Aún no hay coordenadas verificadas para mostrar puntos en este mapa.</p>;
-  if (failed) return <p className="shipping-map-hint">No pudimos cargar el mapa. Puedes elegir la oficina desde la lista o abrir el localizador oficial.</p>;
-  return <div ref={node} className="shipping-map" aria-label="Mapa de puntos disponibles" />;
-}
-
-function escapeMarkup(value) {
-  return String(value || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-}
-
-export default function ShippingLocationPicker({ locations, option, selectedId, onSelect }) {
-  const [term, setTerm] = useState('');
-  const [showDirectory, setShowDirectory] = useState(false);
+export default function ShippingLocationPicker({ locations = [], option, selectedId, onSelect }) {
+  const isMeeting = option?.mode === 'MEETING';
   const carrier = option?.carrier;
-  const directory = OFFICIAL[carrier];
-  const filtered = useMemo(() => {
-    const norm = term.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    return locations.filter((p) => !norm || `${p.name} ${p.city} ${p.state} ${p.address}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(norm));
-  }, [locations, term]);
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [term, setTerm] = useState('');
+  const [directory, setDirectory] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
-  return <div className="shipping-location-picker">
-    <h3>{option?.mode === 'MEETING' ? 'Escoge el lugar del encuentro' : 'Selecciona dónde recoger tu pedido'}</h3>
-    <p className="shipping-muted">{option?.mode === 'MEETING'
-      ? 'Escoge un lugar publicado y verificado por FENMI. El pago se realiza allí cuando recibas el producto.'
-      : 'Escoge una sucursal confirmada por FENMI. La entrega solo puede pagarse cuando la oficina tenga una tarifa válida.'}</p>
-    <label className="checkout-field"><span>Buscar por ciudad, departamento o dirección</span>
-      <input className="field" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Ej. Bogotá, Medellín, dirección…" />
+  useEffect(() => {
+    setCity(''); setState(''); setDirectory([]); setTerm(''); setError('');
+  }, [carrier, option?.mode]);
+
+  useEffect(() => {
+    if (isMeeting || !carrier || !city || !state) {
+      setDirectory([]); setBusy(false);
+      return undefined;
+    }
+    let active = true;
+    setBusy(true); setError(''); setDirectory([]);
+    orderApi.shippingOffices(carrier, city, state)
+      .then((points) => { if (active) setDirectory(Array.isArray(points) ? points : []); })
+      .catch((err) => { if (active) { setDirectory([]); setError(err.response?.data?.error?.message || 'No se pudo consultar el directorio. Puedes revisar la web de la transportadora.'); } })
+      .finally(() => { if (active) setBusy(false); });
+    return () => { active = false; };
+  }, [isMeeting, carrier, city, state]);
+
+  const points = useMemo(() => mergeOfficesForSelect({
+    approved: locations, directory, carrier, city, state, term, mode: isMeeting ? 'MEETING' : 'OFFICE'
+  }), [locations, directory, carrier, city, state, term, isMeeting]);
+  const selectedPoint = points.find((point) => point.id === selectedId) || null;
+  const authorized = points.filter((point) => point.readyForCheckout === true);
+  const browsing = points.filter((point) => point.readyForCheckout !== true);
+  const usePoint = (id) => onSelect(id);
+
+  return <section className="shipping-location-picker" aria-label={isMeeting ? 'Puntos de encuentro FENMI' : 'Sucursales para retirar el pedido'}>
+    <h3>{isMeeting ? 'Elige el punto donde pagarás y recibirás tu pedido' : 'Elige la sucursal donde prefieres recoger tu pedido'}</h3>
+    <p className="shipping-muted">{isMeeting
+      ? 'Estos puntos son publicados por FENMI. Pagarás al vendedor únicamente cuando recibas el producto.'
+      : 'Busca tu municipio. La lista se llena con oficinas del directorio logístico de la transportadora; solo las confirmadas por FENMI permiten pagar el pedido.'}</p>
+
+    {!isMeeting && <AveOnlineCityPicker
+      city={city} state={state}
+      onEdit={(next) => { setCity(next); setState(''); setDirectory([]); onSelect(''); }}
+      onSelect={(nextCity, nextState) => { setCity(nextCity); setState(nextState); setDirectory([]); onSelect(''); }}
+    />}
+
+    <label className="checkout-field"><span>Filtrar por nombre o dirección</span>
+      <input className="field" value={term} onChange={(event) => setTerm(event.target.value)} placeholder={isMeeting ? 'Buscar punto de encuentro…' : 'Buscar sucursal, barrio o dirección…'} />
     </label>
-    <div className="shipping-location-layout">
-      <div className="shipping-location-list" role="radiogroup" aria-label="Puntos disponibles para recoger">
-        {filtered.length ? filtered.map((p) => <button key={p.id} type="button" role="radio" aria-checked={selectedId === p.id} className={`shipping-location-item ${selectedId === p.id ? 'selected' : ''}`} onClick={() => onSelect(p.id)}>
-          <strong>{p.name}</strong><span>{p.address}</span><small>{p.city}, {p.state}</small>
-          {p.readyForCheckout === false && <small className="shipping-location-warning">Pendiente de habilitación para recibir pedidos</small>}
-        </button>) : <div className="shipping-muted">{locations.length
-          ? 'No hay puntos que coincidan con tu búsqueda.'
-          : option?.mode === 'MEETING'
-            ? 'FENMI aún no ha publicado puntos de encuentro. Debe registrarlos en Administración → Configuración → Envíos.'
-            : 'Aún no hay sucursales habilitadas por FENMI para esta transportadora.'}</div>}
-      </div>
-      <BranchMap locations={filtered} selectedId={selectedId} onSelect={onSelect} />
-    </div>
-    {directory && <div className="shipping-official">
-      <a href={directory.url} target="_blank" rel="noopener noreferrer">Abrir localizador oficial de {directory.title} ↗</a>
-      <button type="button" className="btn outline small" onClick={() => setShowDirectory(!showDirectory)} aria-expanded={showDirectory}>{showDirectory ? 'Ocultar mapa oficial' : 'Ver mapa oficial de sucursales'}</button>
-      {showDirectory && <div className="shipping-directory-frame"><iframe title={`Puntos oficiales de ${directory.title}`} src={directory.url} loading="lazy" referrerPolicy="strict-origin-when-cross-origin" /><p>Si el sitio de la transportadora no permite mostrarse aquí, abre el localizador en otra pestaña.</p></div>}
-      <small>El mapa oficial es informativo. Una sucursal solo estará disponible para recibir tu pedido cuando FENMI la habilite arriba.</small>
+    <label className="checkout-field"><span>{isMeeting ? 'Punto de encuentro' : 'Lista de oficinas'}</span>
+      <select className="field shipping-office-select" value={points.some((point) => point.id === selectedId) ? selectedId : ''}
+        onChange={(event) => usePoint(event.target.value)} aria-label={isMeeting ? 'Elegir punto de encuentro' : 'Elegir oficina de retiro'}>
+        <option value="">{busy ? 'Consultando sucursales…' : isMeeting ? 'Selecciona un punto de encuentro' : !city || !state ? 'Primero busca y selecciona un municipio' : 'Selecciona una oficina por nombre y dirección'}</option>
+        {authorized.length > 0 && <optgroup label="Oficinas habilitadas por FENMI">
+          {authorized.map((point) => <option key={point.id} value={point.id}>{point.name} — {point.address} ({point.city})</option>)}
+        </optgroup>}
+        {browsing.length > 0 && <optgroup label={isMeeting ? 'Puntos pendientes' : 'Directorio de oficinas — pendientes de habilitación por FENMI'}>
+          {browsing.map((point) => <option key={point.id} value={point.id}>{point.name} — {point.address} ({point.city})</option>)}
+        </optgroup>}
+      </select>
+    </label>
+
+    {busy && <p className="shipping-muted" role="status">Consultando oficinas de {OFFICIAL[carrier]?.title || 'la transportadora'}…</p>}
+    {error && <p className="shipping-quote-error" role="status">{error}</p>}
+    {!busy && !points.length && <p className="shipping-muted" role="status">{isMeeting
+      ? 'FENMI aún no ha registrado puntos de encuentro. Deben habilitarse desde el administrador.'
+      : !city || !state ? 'Selecciona un municipio para cargar sus oficinas.' : 'No aparecen oficinas en ese municipio o con ese filtro. Consulta el localizador oficial.'}</p>}
+    {selectedPoint && <div className="shipping-office-selected" role="status">
+      <strong>{selectedPoint.name}</strong>
+      <span>{selectedPoint.address} · {selectedPoint.city}, {selectedPoint.state}</span>
+      {selectedPoint.readyForCheckout !== true && <small className="shipping-location-warning">Oficina localizada, pero FENMI todavía debe confirmar que admite el retiro y validar el costo del envío. No es posible pagar por este punto aún.</small>}
     </div>}
-  </div>;
+    {!isMeeting && <div className="shipping-official">
+      <a href={OFFICIAL.ENVIA.url} target="_blank" rel="noopener noreferrer">Ver sucursales en el sitio oficial de envía ↗</a>
+      <a href={OFFICIAL.INTERRAPIDISIMO.url} target="_blank" rel="noopener noreferrer">Ver sucursales en el sitio oficial de Inter Rapidísimo ↗</a>
+      <small>Los enlaces abren cada plataforma directamente, en otra pestaña. FENMI no incrusta mapas.</small>
+    </div>}
+  </section>;
 }
