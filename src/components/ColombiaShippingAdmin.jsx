@@ -1,125 +1,81 @@
 import React from 'react';
-import AveOnlineOfficeImport from '@/components/AveOnlineOfficeImport';
 import { prepareDeliverySettings } from '@/utils/colombiaDeliverySetup';
+import { COLOMBIA_DEPARTMENTS } from '@/utils/colombiaDepartments';
 
-const METHODS = [
-  ['meeting_cash', 'Encuentro con vendedor · pago presencial'],
-  ['envia_home', 'envía · a domicilio'],
-  ['envia_office', 'envía · recoger en sucursal'],
-  ['inter_home', 'Inter Rapidísimo · a domicilio'],
-  ['inter_office', 'Inter Rapidísimo · recoger en sucursal']
+const HOME_METHODS = [
+  ['envia_home', 'envía · entrega a domicilio'],
+  ['inter_home', 'Inter Rapidísimo · entrega a domicilio']
 ];
 
-const BLANK = { enabled: false, options: {}, locations: [] };
+const BLANK = { enabled: true, options: {}, locations: [] };
 
 export default function ColombiaShippingAdmin({ value, onChange }) {
   const config = value || BLANK;
   const options = config.options || {};
-  const locations = config.locations || [];
   const set = (patch) => onChange({ ...config, ...patch });
   const patchOption = (id, patch) => {
-    const defaults = id.endsWith('_home') ? { rateMode: 'LIVE_AVEONLINE', flatCost: null } : id.endsWith('_office') ? { rateMode: 'OFFICE_VERIFIED', flatCost: null } : {};
-    set({ options: { ...options, [id]: { ...defaults, ...(options[id] || {}), ...patch } } });
+    const current = options[id] || {};
+    set({ options: { ...options, [id]: { rateMode: 'MANUAL', flatCost: null, rates: [], ...current, ...patch, enabled: true } } });
   };
-  const updateLocation = (id, patch) => set({ locations: locations.map((p) => p.id === id ? { ...p, ...patch, verified: false } : p) });
-  const setVerified = (id, value) => set({ locations: locations.map((p) => p.id === id ? { ...p, verified: value } : p) });
-  const addLocation = () => set({ locations: [...locations, { id: `point-${Date.now()}-${Math.floor(Math.random() * 10000)}`, type: 'OFFICE', carrier: 'ENVIA', name: '', address: '', city: '', state: '', lat: '', lng: '', active: false, verified: false, instructions: '' }] });
 
   return <div className="colombia-admin">
-    <label className="colombia-admin-switch"><input type="checkbox" checked={config.enabled === true} onChange={(e) => set({ enabled: e.target.checked })} /> Activar métodos de entrega de Colombia</label>
     <div className="colombia-admin-setup">
       <button type="button" className="btn outline" onClick={() => onChange(prepareDeliverySettings(config))}>
-        Preparar las 5 modalidades acordadas (sin asignar precios)
+        Preparar entrega contra pago y domicilio
       </button>
-      <p>Este botón registra encuentro presencial, envía e Inter Rapidísimo para domicilio y oficina. No crea puntos ficticios ni tarifas. Guarda los cambios al final de Configuración; las opciones sin cotizador o punto verificado seguirán bloqueadas al cliente.</p>
+      <p>Contra entrega queda habilitado sin Wompi. envía e Inter Rapidísimo quedan habilitados para domicilio y se cobran por Wompi con las tarifas que configures abajo.</p>
     </div>
-    <p>Las cotizaciones automáticas reales se obtienen de AveOnline con origen Barranquilla, según las transportadoras activadas en tu cuenta. Para las sucursales, la API de cotización no documenta un precio individual por oficina: usa únicamente importes comprobados con la agencia.</p>
+
+    <section className="colombia-admin-method">
+      <h4>Pago contra entrega · punto de encuentro</h4>
+      <p>El cliente escribe el lugar donde quiere encontrarse con el vendedor. El costo de envío es $0 y FENMI no abre Wompi. El pago se confirma en el panel cuando el vendedor recibe el dinero y entrega el producto.</p>
+    </section>
+
+    <h4>Tarifas de envío a domicilio</h4>
+    <p>Configura cada transportadora por separado. Una tarifa con ciudad tiene prioridad sobre la tarifa general del departamento. La tarifa de respaldo es opcional y solo se usa cuando no existe una regla más específica.</p>
+
     <div className="colombia-admin-methods">
-      {METHODS.map(([id, label]) => {
+      {HOME_METHODS.map(([id, label]) => {
         const o = options[id] || {};
-        const isMeeting = id === 'meeting_cash';
-        const isOffice = id.endsWith('_office');
-        const rateMode = o.rateMode || (isOffice ? 'OFFICE_VERIFIED' : isMeeting ? 'MANUAL' : 'LIVE_AVEONLINE');
+        const rateMode = o.rateMode === 'LIVE_AVEONLINE' ? 'LIVE_AVEONLINE' : 'MANUAL';
+        const rates = Array.isArray(o.rates) ? o.rates : [];
         return <div key={id} className="colombia-admin-method">
-          <label><input type="checkbox" checked={o.enabled === true} onChange={(e) => patchOption(id, { enabled: e.target.checked })} /> <strong>{label}</strong></label>
-          {!isMeeting && <div className="colombia-admin-rate">
-            <label>Origen de la tarifa
+          <strong>{label}</strong>
+          <div className="colombia-admin-rate">
+            <label>Cómo calcular el envío
               <select value={rateMode} onChange={(e) => patchOption(id, { rateMode: e.target.value, flatCost: null })}>
-                <option value="MANUAL">Tarifas confirmadas por FENMI (manual)</option>
-                {isOffice ? <option value="OFFICE_VERIFIED">Tarifa verificada por sucursal (vigencia 7 días)</option> : <option value="LIVE_AVEONLINE">Cotización real por API AveOnline (Barranquilla)</option>}
+                <option value="MANUAL">Tarifas configuradas en el panel</option>
+                <option value="LIVE_AVEONLINE">Cotización por API AveOnline (opcional)</option>
               </select>
             </label>
-            {rateMode === 'LIVE_AVEONLINE' && <p>Consulta la tarifa del transportador seleccionado por destino y medidas reales del paquete. Se necesitan AVEONLINE_USER, AVEONLINE_PASSWORD y AVEONLINE_IDEMPRESA en el VPS; nunca en Vercel.</p>}
-            {rateMode === 'OFFICE_VERIFIED' && <p>Cada sucursal requiere su tarifa, fecha de verificación y enlace oficial de respaldo. Una tarifa vencida no se puede cobrar.</p>}
-            {!['LIVE_AVEONLINE', 'OFFICE_VERIFIED'].includes(rateMode) && <><label>Tarifa plana confirmada (COP; vacío = solo tarifas por destino)
-              <input type="number" min="0" step="1" placeholder="Sin tarifa asignada" value={o.flatCost ?? ''} onChange={(e) => patchOption(id, { flatCost: e.target.value === '' ? null : Number(e.target.value) })} />
-            </label>
+
+            {rateMode === 'LIVE_AVEONLINE' ? (
+              <p>Si la API está conectada, FENMI usa su cotización. Si falla, solo podrá usar reglas manuales que ya estén guardadas; nunca inventará un costo.</p>
+            ) : <>
+              <label>Tarifa de respaldo para Colombia (COP, opcional)
+                <input type="number" min="0" step="1" placeholder="Ej. 18000" value={o.flatCost ?? ''} onChange={(e) => patchOption(id, { flatCost: e.target.value === '' ? null : Number(e.target.value) })} />
+              </label>
+              <div className="colombia-admin-rate-rules">
+                <strong>Tarifas por departamento o ciudad</strong>
+                <p>Deja Ciudad vacía para aplicar la tarifa a todo el departamento. Si agregas una ciudad, ese valor tendrá prioridad.</p>
+                {rates.map((r, i) => <div className="colombia-admin-rule" key={`${id}-${i}`}>
+                  <select aria-label="Departamento de tarifa" value={r.state || ''} onChange={(e) => patchOption(id, { rates: rates.map((item, j) => j === i ? { ...item, state: e.target.value } : item) })}><option value="">Departamento</option>{COLOMBIA_DEPARTMENTS.map((department) => <option key={department} value={department}>{department}</option>)}</select>
+                  <input aria-label="Ciudad de tarifa" placeholder="Ciudad (opcional)" value={r.city || ''} onChange={(e) => patchOption(id, { rates: rates.map((item, j) => j === i ? { ...item, city: e.target.value } : item) })} />
+                  <input aria-label="Tarifa en COP" type="number" min="0" step="1" value={r.cost ?? ''} placeholder="COP" onChange={(e) => patchOption(id, { rates: rates.map((item, j) => j === i ? { ...item, cost: e.target.value === '' ? null : Number(e.target.value) } : item) })} />
+                  <button className="btn outline small" type="button" onClick={() => patchOption(id, { rates: rates.filter((_, j) => j !== i) })}>Quitar</button>
+                </div>)}
+                <button className="btn outline small" type="button" onClick={() => patchOption(id, { rates: [...rates, { state: '', city: '', cost: null }] })}>+ Añadir tarifa por destino</button>
+              </div>
             </>}
-            <label><input type="checkbox" checked={o.freeShippingEligible === true} onChange={(e) => patchOption(id, { freeShippingEligible: e.target.checked })} /> Permitir envío gratis por umbral de compra</label>
-            {!['LIVE_AVEONLINE', 'OFFICE_VERIFIED'].includes(rateMode) && <div className="colombia-admin-rate-rules">
-              <strong>Tarifas por destino</strong>
-              {(o.rates || []).map((r, i) => <div className="colombia-admin-rule" key={i}>
-                <input aria-label="Departamento de tarifa" placeholder="Departamento" value={r.state || ''} onChange={(e) => patchOption(id, { rates: o.rates.map((item, j) => j === i ? { ...item, state: e.target.value } : item) })} />
-                <input aria-label="Ciudad de tarifa" placeholder="Ciudad (opcional)" value={r.city || ''} onChange={(e) => patchOption(id, { rates: o.rates.map((item, j) => j === i ? { ...item, city: e.target.value } : item) })} />
-                <input aria-label="Tarifa en COP" type="number" min="0" value={r.cost ?? ''} placeholder="COP" onChange={(e) => patchOption(id, { rates: o.rates.map((item, j) => j === i ? { ...item, cost: e.target.value === '' ? null : Number(e.target.value) } : item) })} />
-                <button className="btn outline small" type="button" onClick={() => patchOption(id, { rates: o.rates.filter((_, j) => j !== i) })}>Quitar</button>
-              </div>)}
-              <button className="btn outline small" type="button" onClick={() => patchOption(id, { rates: [...(o.rates || []), { state: '', city: '', cost: null }] })}>+ Tarifa por destino</button>
-            </div>}
-          </div>}
+          </div>
         </div>;
       })}
     </div>
-    <section className="colombia-admin-packaging">
-      <h4>Medidas reales del paquete para calcular el envío</h4>
-      <p>Cuando varias prendas viajan en una sola caja, cotiza con las dimensiones de esa caja y la suma de los pesos reales. Para compras que excedan la capacidad indicada, el sistema detendrá el cobro hasta revisar el empaque.</p>
-      <label>Cómo se empaca el pedido
-        <select value={config.packaging?.mode || 'PER_PRODUCT'} onChange={(e) => set({ packaging: { ...(config.packaging || {}), mode: e.target.value } })}>
-          <option value="PER_PRODUCT">Un paquete por producto (configuración anterior)</option>
-          <option value="SINGLE_BOX">Una caja consolidada para todo el pedido</option>
-        </select>
-      </label>
-      {config.packaging?.mode === 'SINGLE_BOX' && <div className="colombia-admin-packaging-grid">
-        {[
-          ['lengthCm', 'Largo de la caja (cm)'],
-          ['widthCm', 'Ancho de la caja (cm)'],
-          ['heightCm', 'Alto de la caja (cm)'],
-          ['tareWeightKg', 'Peso de la caja vacía (kg)'],
-          ['maxWeightKg', 'Peso máximo admitido (kg)']
-        ].map(([key, label]) => <label key={key}>{label}
-          <input type="number" step="0.001" min='0.001' value={config.packaging?.[key] ?? ''} onChange={(e) => set({ packaging: { ...(config.packaging || {}), [key]: e.target.value === '' ? null : Number(e.target.value) } })} />
-        </label>)}
-      </div>}
-      <small>Estos datos son de embalaje, no de la prenda sin empacar. No inventes medidas para habilitar tarifas.</small>
+
+    <section className="colombia-admin-method">
+      <h4>Retiro en sucursal</h4>
+      <p><strong>Próximamente.</strong> Esta opción permanece deshabilitada para el cliente.</p>
+      <p><a href="https://envia.co/puntos-de-atencion" rel="noopener noreferrer" target="_blank">Ver oficinas de envía ↗</a> · <a href="https://www3.interrapidisimo.com/SitioOficinaMasCercana/" rel="noopener noreferrer" target="_blank">Ver oficinas de Inter Rapidísimo ↗</a></p>
     </section>
-    <label className="colombia-admin-hours">Vigencia de una solicitud de encuentro (horas, entre 6 y 168)
-      <input type="number" min="6" max="168" value={config.meetingReservationHours ?? 48} onChange={(e) => set({ meetingReservationHours: Math.min(168, Math.max(6, Number(e.target.value) || 48)) })} />
-    </label>
-    <AveOnlineOfficeImport locations={locations} onImport={(point) => set({ locations: [...locations, point] })} />
-    <h4>Puntos habilitados para retiro o encuentro</h4>
-    <p>Consulta el localizador oficial de cada empresa, confirma con ella si recibe envíos para retiro y registra sus datos. Si usas tarifas por sucursal, guarda el importe real, la fecha y la referencia de la cotización oficial. No se cobra una tarifa vencida.</p>
-    <p><a href="https://envia.co/puntos-de-atencion" rel="noopener noreferrer" target="_blank">Directorio oficial de envía ↗</a> · <a href="https://www3.interrapidisimo.com/SitioOficinaMasCercana/" rel="noopener noreferrer" target="_blank">Directorio oficial de Inter Rapidísimo ↗</a></p>
-    {locations.map((p) => <div key={p.id} className="colombia-admin-point">
-      <div className="colombia-admin-point-row">
-        <label>Tipo<select value={p.type || 'OFFICE'} onChange={(e) => updateLocation(p.id, { type: e.target.value, carrier: e.target.value === 'MEETING' ? null : 'ENVIA' })}><option value="OFFICE">Sucursal de transportadora</option><option value="MEETING">Punto de encuentro con el vendedor</option></select></label>
-        {p.type !== 'MEETING' && <label>Transportadora<select value={p.carrier || 'ENVIA'} onChange={(e) => updateLocation(p.id, { carrier: e.target.value })}><option value="ENVIA">envía</option><option value="INTERRAPIDISIMO">Inter Rapidísimo</option></select></label>}
-        <label>Nombre<input value={p.name || ''} onChange={(e) => updateLocation(p.id, { name: e.target.value })} /></label>
-        <label>Dirección<input value={p.address || ''} onChange={(e) => updateLocation(p.id, { address: e.target.value })} /></label>
-        <label>Ciudad<input value={p.city || ''} onChange={(e) => updateLocation(p.id, { city: e.target.value })} /></label>
-        <label>Departamento<input value={p.state || ''} onChange={(e) => updateLocation(p.id, { state: e.target.value })} /></label>
-        {p.type === 'OFFICE' && <>
-          <label>Tarifa oficial de esta sucursal (COP)<input type="number" min="0" step="1" value={p.rateCost ?? ''} onChange={(e) => updateLocation(p.id, { rateCost: e.target.value === '' ? null : Number(e.target.value) })} /></label>
-          <label>Fecha de cotización<input type="date" value={p.rateCheckedAt || ''} onChange={(e) => updateLocation(p.id, { rateCheckedAt: e.target.value })} /></label>
-          <label className="colombia-admin-span">Enlace HTTPS de la cotización o tarifa oficial<input type="url" value={p.rateSourceUrl || ''} onChange={(e) => updateLocation(p.id, { rateSourceUrl: e.target.value })} placeholder="https://..." /></label>
-        </>}
-        <label className="colombia-admin-span">Instrucciones<input value={p.instructions || ''} onChange={(e) => updateLocation(p.id, { instructions: e.target.value })} /></label>
-      </div>
-      <div className="colombia-admin-point-actions">
-        <label><input type="checkbox" checked={p.active === true} onChange={(e) => updateLocation(p.id, { active: e.target.checked })} /> Activo</label>
-        <label><input type="checkbox" checked={p.verified === true} onChange={(e) => setVerified(p.id, e.target.checked)} /> Verificado y autorizado para retiro/encuentro</label>
-        <button type="button" className="btn outline small" onClick={() => set({ locations: locations.filter((item) => item.id !== p.id) })}>Quitar punto</button>
-      </div>
-    </div>)}
-    <button className="btn outline small" type="button" onClick={addLocation}>+ Añadir punto de retiro o encuentro</button>
   </div>;
 }

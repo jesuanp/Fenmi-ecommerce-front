@@ -62,10 +62,13 @@ export function prepareDeliverySettings(previous = {}) {
   const next = { ...current };
   for (const method of FENMI_DELIVERY_OPTIONS) {
     const existing = current[method.id] || {};
+    const legacyFlat12000 = method.mode === 'HOME' && !(Array.isArray(existing.rates) && existing.rates.length > 0) && Number(existing.flatCost) === 12000;
     next[method.id] = {
       ...existing,
-      enabled: true,
-      ...(method.mode === 'HOME' ? { rateMode: 'LIVE_AVEONLINE' } : method.mode === 'OFFICE' ? { rateMode: 'OFFICE_VERIFIED' } : { rateMode: 'MANUAL' })
+      ...(legacyFlat12000 ? { flatCost: null } : {}),
+      enabled: method.mode !== 'OFFICE',
+      ...(method.mode === 'HOME' ? { freeShippingEligible: false } : {}),
+      ...(method.mode === 'HOME' ? { rateMode: 'MANUAL' } : method.mode === 'OFFICE' ? { rateMode: 'OFFICE_VERIFIED' } : { rateMode: 'MANUAL' })
     };
   }
   return { ...base, enabled: true, options: next, locations: Array.isArray(base.locations) ? base.locations : [] };

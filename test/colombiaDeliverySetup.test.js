@@ -24,10 +24,18 @@ test('prepara cinco opciones y conserva sucursales sin inventar tarifas', () => 
   const existing = { enabled: false, options: { envia_home: { enabled: false, flatCost: null } }, locations: points, meetingReservationHours:48 };
   const prepared = prepareDeliverySettings(existing);
   assert.equal(prepared.enabled, true);
-  assert.equal(prepared.options.envia_home.rateMode, 'LIVE_AVEONLINE');
+  assert.equal(prepared.options.envia_home.rateMode, 'MANUAL');
   assert.equal(prepared.options.inter_office.rateMode, 'OFFICE_VERIFIED');
   assert.equal(prepared.options.meeting_cash.enabled, true);
+  assert.equal(prepared.options.envia_office.enabled, false);
   assert.deepEqual(prepared.locations, points);
   assert.equal(prepared.options.envia_home.flatCost, null);
   assert.deepEqual(prepareDeliverySettings(prepared), prepared);
+});
+
+
+test('limpia el precio heredado de 12 mil cuando se prepara el checkout nuevo', () => {
+  const prepared = prepareDeliverySettings({ options: { envia_home: { flatCost: 12000 }, inter_home: { flatCost: 12000 } } });
+  assert.equal(prepared.options.envia_home.flatCost, null);
+  assert.equal(prepared.options.inter_home.flatCost, null);
 });
