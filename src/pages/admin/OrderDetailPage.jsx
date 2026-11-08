@@ -9,7 +9,7 @@ import { orderStage, orderStatusLabel, paymentStatusLabel, TRANSACTION_STATUS_LA
 const NEXT = {
   PENDING_PAYMENT: ['CANCELLED'],
   PAID: ['PROCESSING', 'SHIPPED'],
-  PAID_STOCK_ISSUE: ['PAID'],
+  PAID_STOCK_ISSUE: ['PAID', 'DELIVERED'],
   PROCESSING: ['SHIPPED'],
   SHIPPED: ['DELIVERED']
 };
@@ -50,7 +50,7 @@ export default function AdminOrderDetailPage() {
   const change = async (toStatus) => {
     if (toStatus === 'SHIPPED') return openShippingModal('ship');
     let note = null;
-    if (order.status === 'PAID_STOCK_ISSUE' && toStatus === 'PAID') {
+    if (order.status === 'PAID_STOCK_ISSUE' && ['PAID', 'DELIVERED'].includes(toStatus)) {
       note = window.prompt('Describe cómo resolviste la incidencia (stock, pago recibido tras cancelación, etc.). Mínimo 10 caracteres:');
       if (note === null) return;
       if (note.trim().length < 10) return ui.showToast('Debes indicar cómo se resolvió la incidencia (mínimo 10 caracteres).');
@@ -109,9 +109,9 @@ export default function AdminOrderDetailPage() {
     if (!window.confirm('¿Confirmas que RECIBISTE EL DINERO Y ENTREGASTE LOS PRODUCTOS en persona? Este paso marcará la compra como pagada y entregada.')) return;
     setMeetingBusy(true);
     try {
-      await adminApi.confirmMeetingCash(id, note.trim());
+      const result = await adminApi.confirmMeetingCash(id, note.trim());
       setOrder(await adminApi.getOrder(id));
-      ui.showToast('Pago en efectivo recibido y entrega confirmada');
+      ui.showToast(result.orderStatus === 'PAID_STOCK_ISSUE' ? 'Pago registrado. Revisa la incidencia de inventario.' : 'Pago en efectivo recibido y entrega confirmada');
     } catch (error) {
       ui.showToast(error.response?.data?.error?.message || 'No se pudo confirmar la entrega presencial');
     } finally { setMeetingBusy(false); }
@@ -228,12 +228,12 @@ export default function AdminOrderDetailPage() {
                 fontSize: 13
               }}
             >
-              <strong>Pago recibido con incidencia.</strong> Puede tratarse de falta de inventario o de un cobro recibido después de cancelar el pedido. Revisa el historial y confirma cómo resolviste el caso antes de autorizar la preparación; si corresponde, solicita un reembolso verificable.
+              <strong>Pago recibido con incidencia.</strong> Puede tratarse de falta de inventario o de un cobro recibido después de cancelar el pedido. Revisa el historial y confirma cómo resolviste el caso. Si el producto ya se entregó personalmente, podrás marcarlo como entregado al regularizar el stock; si corresponde, solicita un reembolso verificable.
             </div>
           )}
           {NEXT[order.status]?.length > 0 && (
             <div className="admin-actions" style={{ marginTop: 12 }}>
-              {NEXT[order.status].map((s) => (
+              {NEXT[order.status].filter((s) => order.status !== 'PAID_STOCK_ISSUE' || (order.shipping?.method?.mode === 'MEETING' ? s === 'DELIVERED' : s === 'PAID')).map((s) => (
                 <button key={s} className="btn-sm" onClick={() => change(s)}>{s === 'SHIPPED' ? 'Registrar despacho' : `Marcar: ${orderStatusLabel(s)}`}</button>
               ))}
             </div>
@@ -287,7 +287,8 @@ export default function AdminOrderDetailPage() {
           {order.shipping?.method?.mode === 'HOME' && !order.shipping?.method?.quotePending && order.shipping?.method?.tariffSource === 'ADMIN_VERIFIED_RATE' && <p>Tarifa confirmada: <strong>{order.shipping?.method?.tariffReference}</strong>. El cliente ya puede pagar desde su enlace de solicitud.</p>}
           {order.shipping?.method?.location && <div className="shipping-admin-delivery-point"><strong>Punto de retiro o encuentro:</strong><p>{order.shipping.method.location.name}</p><p>{order.shipping.method.location.address}, {order.shipping.method.location.city}, {order.shipping.method.location.state}</p></div>}
           {order.shipping?.method?.mode === 'MEETING' && order.paymentStatus === 'PENDING' && <p><strong>Pago al recibir:</strong> no hay cobro por Wompi. La entrega y el cobro requieren confirmación del vendedor.</p>}
-          {order.shipping?.method?.mode === 'MEETING' && order.paymentStatus === 'PENDING' && order.status === 'PENDING_PAYMENT' && <button type="button" disabled={meetingBusy} className="btn lime" onClick={confirmMeeting}>{meetingBusy ? 'Confirmando…' : 'Confirmar efectivo recibido y producto entregado'}</button>}
+          {order.shipping?.method?.mode === 'MEETING' && order.status === 'CANCELLED' && <p><strong>Reserva cancelada:</strong> si el dinero ya fue recibido y el producto ya fue entregado físicamente, puedes registrar la venta con una nota de confirmación. El inventario se verificará antes de cerrar el pedido.</p>}
+          {order.shipping?.method?.mode === 'MEETING' && ['PENDING', 'FAILED'].includes(order.paymentStatus) && ['PENDING_PAYMENT', 'CANCELLED'].includes(order.status) && <button type="button" disabled={meetingBusy} className="btn lime" onClick={confirmMeeting}>{meetingBusy ? 'Confirmando…' : 'Confirmar efectivo recibido y producto entregado'}</button>}
         </div>
 
         <div className="admin-card detail-section">
@@ -301,7 +302,7 @@ export default function AdminOrderDetailPage() {
               {!shipment.trackingNumber && <p style={{ color: 'var(--mid)', fontSize: 12 }}>Guía todavía no registrada.</p>}
             </div>
           ))}
-          {['SHIPPED', 'DELIVERED'].includes(order.status) && order.paymentStatus === 'PAID' && (
+          {order.shipping?.method?.mode !== 'MEETING' && ['SHIPPED', 'DELIVERED'].includes(order.status) && order.paymentStatus === 'PAID' && (
             <button className="btn-sm" style={{ marginTop: 10 }} onClick={() => openShippingModal('edit')}>Actualizar transportadora o guía</button>
           )}
         </div>
@@ -368,6 +369,11 @@ export default function AdminOrderDetailPage() {
 
       <div className="admin-card detail-section">
         <h3>Productos</h3>
+        {order.inventory && <p style={{ marginBottom: 12, fontSize: 13, color: 'var(--mid)' }}>
+          Stock descontado: <strong>{order.inventory.deducted} de {order.inventory.requested} unidades</strong>
+          {order.inventory.pending > 0 && order.paymentStatus === 'PAID' && <strong style={{ color: 'var(--danger)', marginLeft: 8 }}>Revisar {order.inventory.pending} unidad(es) pendiente(s) de registrar</strong>}
+          {order.paymentStatus !== 'PAID' && <span> · Se descontará al confirmar el pago o la entrega personal.</span>}
+        </p>}
         <div className="detail-items">
           {order.items.map((i) => (
             <div className="detail-item" key={i.id}>

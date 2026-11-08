@@ -100,7 +100,7 @@ export default function ProductFormPage() {
           shippingWidthCm: p.shippingWidthCm ?? '', shippingHeightCm: p.shippingHeightCm ?? '',
           featured: p.featured, isNew: p.isNew, bestSeller: p.bestSeller, active: p.active
         });
-        setVariants((p.variants || []).map((v) => ({ colorId: v.colorId, sizeId: v.sizeId, stock: v.stock, priceOverride: v.priceOverride || '', active: v.active })));
+        setVariants((p.variants || []).map((v) => ({ colorId: v.colorId, sizeId: v.sizeId, stock: v.stock, expectedStock: v.stock, priceOverride: v.priceOverride || '', active: v.active })));
         setImages(p.images || []);
         setTagIds((p.terms || []).map((t) => t.id));
       })
@@ -143,6 +143,7 @@ export default function ProductFormPage() {
         colorId: Number(v.colorId),
         sizeId: Number(v.sizeId),
         stock: Number(v.stock) || 0,
+        ...(v.expectedStock !== undefined ? { expectedStock: Number(v.expectedStock) } : {}),
         priceOverride: v.priceOverride === '' || v.priceOverride == null ? null : Number(v.priceOverride),
         active: v.active !== false
       })),
@@ -264,11 +265,11 @@ export default function ProductFormPage() {
           <h3 style={{ marginBottom: 14 }}>Variantes (color × talla + stock)</h3>
           {variants.map((v, i) => (
             <div className="variant-row" key={i}>
-              <select value={v.colorId} onChange={(e) => setVariant(i, 'colorId', e.target.value)}>
+              <select value={v.colorId} disabled={v.expectedStock !== undefined} onChange={(e) => setVariant(i, 'colorId', e.target.value)}>
                 <option value="">Color…</option>
                 {colors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <select value={v.sizeId} onChange={(e) => setVariant(i, 'sizeId', e.target.value)}>
+              <select value={v.sizeId} disabled={v.expectedStock !== undefined} onChange={(e) => setVariant(i, 'sizeId', e.target.value)}>
                 <option value="">Talla…</option>
                 {sizes.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
@@ -278,6 +279,7 @@ export default function ProductFormPage() {
             </div>
           ))}
           <button type="button" className="btn-sm" onClick={addVariantRow}>+ Agregar variante</button>
+          {editing && <p style={{ fontSize: 12, color: 'var(--mid)', marginTop: 6 }}>Para cambiar el color o la talla, elimina la variante anterior y agrega otra; así no se alteran las ventas registradas.</p>}
           <div className="admin-color-creator">
             <div>
               <h4>Crear un color nuevo</h4>
