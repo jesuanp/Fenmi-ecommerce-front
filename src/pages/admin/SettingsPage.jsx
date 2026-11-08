@@ -313,7 +313,7 @@ export default function AdminSettingsPage() {
         <div className="form-grid">
           <div className="afield"><label>Envío gratis desde (COP)</label><input type="number" value={shipping.freeShippingThreshold || ''} onChange={(e) => set('shipping', 'freeShippingThreshold', Number(e.target.value) || 0)} /></div>
           <div className="afield" style={{ gridColumn: '1 / -1' }}>
-            <p className="checkout-note" role="status">FENMI ya no utiliza el antiguo método «Envío nacional» de $12.000 para calcular costos. Activa los métodos de Colombia abajo y selecciona «Cotización real por API» para domicilio. Para recibir en oficina debes registrar puntos autorizados y tarifas verificadas.</p>
+            <p className="checkout-note" role="status">Para configurar el envío, selecciona cada transportadora y agrega tarifas en COP por departamento o por ciudad usando las listas. Si no existe una tarifa específica, se aplica la del departamento o la tarifa de respaldo que configures. Sin una tarifa confirmada, el cliente no podrá iniciar el pago a domicilio.</p>
           </div>
         </div>
         <ColombiaShippingAdmin value={shipping.colombia} onChange={(next) => set('shipping', 'colombia', next)} />

@@ -13,6 +13,9 @@ export const orderApi = {
   async releasePending(id) {
     return (await client.post(`/orders/${id}/release-pending`)).data.data;
   },
+  async shippingDestinations() {
+    return (await client.get('/shipping/destinations')).data.data;
+  },
   async shippingCities(q) {
     return (await client.get('/shipping/cities', { params: { q } })).data.data;
   },

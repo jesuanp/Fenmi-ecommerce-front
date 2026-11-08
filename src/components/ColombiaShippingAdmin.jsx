@@ -1,6 +1,6 @@
 import React from 'react';
 import { prepareDeliverySettings } from '@/utils/colombiaDeliverySetup';
-import { COLOMBIA_DEPARTMENTS } from '@/utils/colombiaDepartments';
+import useColombiaDestinations, { matchCity, matchDepartment } from '@/hooks/useColombiaDestinations';
 
 const HOME_METHODS = [
   ['envia_home', 'envía · entrega a domicilio'],
@@ -12,6 +12,7 @@ const BLANK = { enabled: true, options: {}, locations: [] };
 export default function ColombiaShippingAdmin({ value, onChange }) {
   const config = value || BLANK;
   const options = config.options || {};
+  const { departments, loading: destinationsLoading, error: destinationsError, retry } = useColombiaDestinations();
   const set = (patch) => onChange({ ...config, ...patch });
   const patchOption = (id, patch) => {
     const current = options[id] || {};
@@ -32,7 +33,9 @@ export default function ColombiaShippingAdmin({ value, onChange }) {
     </section>
 
     <h4>Tarifas de envío a domicilio</h4>
-    <p>Configura cada transportadora por separado. Una tarifa con ciudad tiene prioridad sobre la tarifa general del departamento. La tarifa de respaldo es opcional y solo se usa cuando no existe una regla más específica.</p>
+    <p>Selecciona un departamento y, si quieres una tarifa especial, una ciudad de su lista. Una tarifa por ciudad tiene prioridad sobre la tarifa general del departamento. La tarifa de respaldo nacional es opcional.</p>
+    {destinationsLoading && <p role="status">Cargando departamentos y municipios…</p>}
+    {destinationsError && <p role="alert" className="shipping-quote-error">{destinationsError} <button type="button" className="btn outline small" onClick={retry}>Reintentar</button></p>}
 
     <div className="colombia-admin-methods">
       {HOME_METHODS.map(([id, label]) => {
@@ -49,24 +52,33 @@ export default function ColombiaShippingAdmin({ value, onChange }) {
               </select>
             </label>
 
-            {rateMode === 'LIVE_AVEONLINE' ? (
-              <p>Si la API está conectada, FENMI usa su cotización. Si falla, solo podrá usar reglas manuales que ya estén guardadas; nunca inventará un costo.</p>
-            ) : <>
-              <label>Tarifa de respaldo para Colombia (COP, opcional)
-                <input type="number" min="0" step="1" placeholder="Ej. 18000" value={o.flatCost ?? ''} onChange={(e) => patchOption(id, { flatCost: e.target.value === '' ? null : Number(e.target.value) })} />
-              </label>
-              <div className="colombia-admin-rate-rules">
-                <strong>Tarifas por departamento o ciudad</strong>
-                <p>Deja Ciudad vacía para aplicar la tarifa a todo el departamento. Si agregas una ciudad, ese valor tendrá prioridad.</p>
-                {rates.map((r, i) => <div className="colombia-admin-rule" key={`${id}-${i}`}>
-                  <select aria-label="Departamento de tarifa" value={r.state || ''} onChange={(e) => patchOption(id, { rates: rates.map((item, j) => j === i ? { ...item, state: e.target.value } : item) })}><option value="">Departamento</option>{COLOMBIA_DEPARTMENTS.map((department) => <option key={department} value={department}>{department}</option>)}</select>
-                  <input aria-label="Ciudad de tarifa" placeholder="Ciudad (opcional)" value={r.city || ''} onChange={(e) => patchOption(id, { rates: rates.map((item, j) => j === i ? { ...item, city: e.target.value } : item) })} />
-                  <input aria-label="Tarifa en COP" type="number" min="0" step="1" value={r.cost ?? ''} placeholder="COP" onChange={(e) => patchOption(id, { rates: rates.map((item, j) => j === i ? { ...item, cost: e.target.value === '' ? null : Number(e.target.value) } : item) })} />
+            {rateMode === 'LIVE_AVEONLINE' && <p>Si la API está conectada, FENMI usa su cotización. Si falla, se utilizan las tarifas manuales que ya estén guardadas; nunca se inventa un costo.</p>}
+            {rateMode === 'MANUAL' && <label>Tarifa de respaldo para Colombia (COP, opcional)
+              <input type="number" min="0" max="100000000" step="1" placeholder="Ej. 18000" value={o.flatCost ?? ''} onChange={(e) => patchOption(id, { flatCost: e.target.value === '' ? null : Number(e.target.value) })} />
+            </label>}
+            <div className="colombia-admin-rate-rules">
+              <strong>Tarifas por departamento o ciudad</strong>
+              <p>Deja la ciudad en «Todo el departamento» para aplicar esa tarifa a cualquier municipio que no tenga una tarifa especial. Puedes dejar estas tarifas como respaldo cuando uses AveOnline.</p>
+              {rates.map((r, i) => {
+                const activeDepartment = matchDepartment(departments, r.state);
+                const cities = activeDepartment?.cities || [];
+                const cityValue = matchCity(departments, r.state, r.city);
+                return <div className="colombia-admin-rule" key={`${id}-${i}`}>
+                  <select aria-label="Departamento de tarifa" value={activeDepartment?.name || ''} disabled={destinationsLoading || !!destinationsError} onChange={(e) => patchOption(id, { rates: rates.map((item, j) => j === i ? { ...item, state: e.target.value, city: '' } : item) })}>
+                    <option value="">Selecciona departamento</option>
+                    {departments.map((department) => <option key={department.name} value={department.name}>{department.name}</option>)}
+                  </select>
+                  <select aria-label="Ciudad de tarifa" value={cityValue || ''} disabled={!activeDepartment || destinationsLoading || !!destinationsError} onChange={(e) => patchOption(id, { rates: rates.map((item, j) => j === i ? { ...item, city: e.target.value } : item) })}>
+                    <option value="">Todo el departamento</option>
+                    {cities.map((city) => <option key={city} value={city}>{city}</option>)}
+                  </select>
+                  <input aria-label="Tarifa en COP" type="number" min="0" max="100000000" step="1" value={r.cost ?? ''} placeholder="Costo COP" onChange={(e) => patchOption(id, { rates: rates.map((item, j) => j === i ? { ...item, cost: e.target.value === '' ? null : Number(e.target.value) } : item) })} />
                   <button className="btn outline small" type="button" onClick={() => patchOption(id, { rates: rates.filter((_, j) => j !== i) })}>Quitar</button>
-                </div>)}
-                <button className="btn outline small" type="button" onClick={() => patchOption(id, { rates: [...rates, { state: '', city: '', cost: null }] })}>+ Añadir tarifa por destino</button>
-              </div>
-            </>}
+                  {r.city && activeDepartment && !cityValue && <small role="alert">Vuelve a seleccionar la ciudad de esta tarifa.</small>}
+                </div>;
+              })}
+              <button className="btn outline small" type="button" disabled={destinationsLoading || !!destinationsError} onClick={() => patchOption(id, { rates: [...rates, { state: '', city: '', cost: null }] })}>+ Añadir tarifa por destino</button>
+            </div>
           </div>
         </div>;
       })}

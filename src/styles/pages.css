@@ -2688,7 +2688,8 @@
 .colombia-admin-rate input[type='number'] { min-height: 38px; width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 6px; }
 .colombia-admin-rate-rules { display: grid; gap: 8px; }
 .colombia-admin-rule { display: grid; grid-template-columns: 1fr 1fr .75fr auto; gap: 8px; }
-.colombia-admin-rule input { min-width: 0; border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+.colombia-admin-rule input, .colombia-admin-rule select { min-width: 0; width: 100%; min-height: 40px; border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: #fff; }
+.colombia-admin-rule > small { grid-column: 1 / -1; color: var(--danger); font-size: 12px; }
 .colombia-admin-point { border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: grid; gap: 16px; }
 .colombia-admin-point-row { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 .colombia-admin-point-row label { display: grid; gap: 4px; font-size: 12px; }

@@ -12,9 +12,15 @@ test('el checkout usa un catálogo estable de departamentos de Colombia', () => 
   assert.equal(new Set(COLOMBIA_DEPARTMENTS).size, COLOMBIA_DEPARTMENTS.length);
 });
 
-test('checkout y panel admin seleccionan el departamento desde la misma lista', () => {
+test('checkout y panel admin usan el mismo catálogo de ciudades y departamentos del servidor', () => {
   const checkout = fs.readFileSync(path.join(process.cwd(), 'src/pages/CheckoutPage.jsx'), 'utf8');
   const admin = fs.readFileSync(path.join(process.cwd(), 'src/components/ColombiaShippingAdmin.jsx'), 'utf8');
-  assert.match(checkout, /COLOMBIA_DEPARTMENTS\.map/);
-  assert.match(admin, /COLOMBIA_DEPARTMENTS\.map/);
+  assert.match(checkout, /useColombiaDestinations/);
+  assert.match(admin, /useColombiaDestinations/);
+  assert.match(checkout, /departments\.map/);
+  assert.match(admin, /departments\.map/);
+  assert.match(checkout, /selectedDepartment\?\.cities/);
+  assert.match(admin, /cities\.map/);
+  assert.doesNotMatch(checkout, /<Field label="Ciudad o municipio"/);
+  assert.doesNotMatch(admin, /<input aria-label="Ciudad de tarifa"/);
 });
