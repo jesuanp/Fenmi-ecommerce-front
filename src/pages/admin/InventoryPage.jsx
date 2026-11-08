@@ -1,3 +1,4 @@
+import AdminPageHeading from '@/components/admin/AdminPageHeading';
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
@@ -24,7 +25,7 @@ export default function AdminInventoryPage() {
 
   return (
     <div>
-      <h1 className="admin-title">Inventario (por variante)</h1>
+      <AdminPageHeading kicker="CATÁLOGO" title="Inventario" description="Consulta existencias por producto, color y talla y registra ajustes." />
       <div className="admin-toolbar">
         <input type="text" placeholder="Buscar producto…" value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="btn-sm" onClick={() => { setPage(1); load(); }}>Buscar</button>

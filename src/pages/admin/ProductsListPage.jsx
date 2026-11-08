@@ -1,3 +1,4 @@
+import AdminPageHeading from '@/components/admin/AdminPageHeading';
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { adminApi } from '@/services/admin';
@@ -30,10 +31,7 @@ export default function AdminProductsPage() {
 
   return (
     <div>
-      <div className="admin-top">
-        <h1 className="admin-title">Productos</h1>
-        <Link to="/admin/products/new" className="btn lime small">+ Nuevo producto</Link>
-      </div>
+      <AdminPageHeading kicker="CATÁLOGO" title="Productos" description="Gestiona las publicaciones y mantén el catálogo actualizado." action={<Link to="/admin/products/new" className="btn lime small">+ Nuevo producto</Link>} />
       <div className="admin-toolbar">
         <input type="text" placeholder="Buscar por nombre, color o talla…" value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="btn-sm" onClick={() => { setPage(1); load(); }}>Buscar</button>

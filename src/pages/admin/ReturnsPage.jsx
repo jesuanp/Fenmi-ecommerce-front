@@ -1,3 +1,4 @@
+import AdminPageHeading from '@/components/admin/AdminPageHeading';
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
@@ -66,7 +67,7 @@ export default function AdminReturnsPage() {
 
   return (
     <div>
-      <h1 className="admin-title">Devoluciones</h1>
+      <AdminPageHeading kicker="VENTAS" title="Devoluciones" description="Revisa las solicitudes y decide cómo proceder con cada caso." />
       <p style={{ color: 'var(--mid)', fontSize: 13, marginTop: -6, marginBottom: 14 }}>
         Solicitudes de devolución. Aprobar inicia un reembolso; el dinero no se considera devuelto hasta confirmar la operación. El stock solo se restituye cuando corresponda.
       </p>

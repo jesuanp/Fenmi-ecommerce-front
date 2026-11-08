@@ -1,3 +1,4 @@
+import AdminPageHeading from '@/components/admin/AdminPageHeading';
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
@@ -26,7 +27,7 @@ export default function AdminTagsPage() {
 
   return (
     <div>
-      <h1 className="admin-title">Etiquetas</h1>
+      <AdminPageHeading kicker="CATÁLOGO" title="Etiquetas" description="Administra los distintivos que acompañan a tus productos." />
       <div className="admin-card" style={{ maxWidth: 440 }}>
         <form className="form-grid" onSubmit={save}>
           <div className="afield"><label>{editId ? 'Editar' : 'Nueva'} etiqueta</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="NUEVO, MÁS VENDIDO…" required /></div>

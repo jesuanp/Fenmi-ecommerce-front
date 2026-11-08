@@ -1,3 +1,4 @@
+import AdminPageHeading from '@/components/admin/AdminPageHeading';
 import React, { useEffect, useState, useRef } from 'react';
 import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
@@ -65,7 +66,7 @@ export default function AdminCategoriesPage() {
 
   return (
     <div>
-      <h1 className="admin-title">Categorías</h1>
+      <AdminPageHeading kicker="CATÁLOGO" title="Categorías" description="Organiza la tienda en secciones fáciles de explorar." />
       <div className="admin-card" style={{ maxWidth: 560 }}>
         <h3 style={{ marginBottom: 12 }}>{editId ? 'Editar' : 'Nueva'} categoría</h3>
         <form className="form-grid" onSubmit={save}>

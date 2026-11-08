@@ -1,3 +1,4 @@
+import AdminPageHeading from '@/components/admin/AdminPageHeading';
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminApi } from '@/services/admin';
@@ -40,7 +41,7 @@ export default function AdminRefundsPage() {
   };
   return (
     <div>
-      <h1 className="admin-title">Reembolsos</h1>
+      <AdminPageHeading kicker="VENTAS" title="Reembolsos" description="Consulta y confirma las devoluciones de dinero." />
       <p style={{ color: 'var(--mid)', fontSize: 13 }}>Aquí se distinguen las solicitudes de devolución de dinero de los reembolsos realmente confirmados. Nunca vuelvas a ejecutar en Wompi un intento con respuesta incierta sin comprobar antes su resultado.</p>
       <div className="admin-toolbar"><select aria-label="Estado del reembolso" value={filter} onChange={(e) => setFilter(e.target.value)}>
         <option value="">Todos los estados</option>

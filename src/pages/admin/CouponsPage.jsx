@@ -1,3 +1,4 @@
+import AdminPageHeading from '@/components/admin/AdminPageHeading';
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
@@ -38,7 +39,7 @@ export default function AdminCouponsPage() {
 
   return (
     <div>
-      <h1 className="admin-title">Cupones</h1>
+      <AdminPageHeading kicker="MARKETING" title="Cupones" description="Crea y administra descuentos disponibles para tus clientes." />
       <div className="admin-card" style={{ maxWidth: 680 }}>
         <h3 style={{ marginBottom: 12 }}>{editId ? 'Editar' : 'Nuevo'} cupón</h3>
         <form className="form-grid" onSubmit={save}>

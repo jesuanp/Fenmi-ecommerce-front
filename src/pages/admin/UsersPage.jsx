@@ -1,3 +1,4 @@
+import AdminPageHeading from '@/components/admin/AdminPageHeading';
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminApi } from '@/services/admin';
@@ -25,7 +26,7 @@ export default function AdminUsersPage() {
 
   return (
     <div>
-      <div className="admin-top"><h1 className="admin-title">Clientes</h1></div>
+      <AdminPageHeading kicker="COMUNIDAD" title="Clientes" description="Administra las cuentas y el acceso de los compradores." />
       <div className="admin-toolbar">
         <input type="text" placeholder="Buscar por nombre o correo…" value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="btn-sm" onClick={() => { setPage(1); load(); }}>Buscar</button>

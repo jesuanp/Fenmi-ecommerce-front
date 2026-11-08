@@ -1,3 +1,4 @@
+import AdminPageHeading from '@/components/admin/AdminPageHeading';
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
@@ -19,7 +20,7 @@ export default function AdminReviewsPage() {
 
   return (
     <div>
-      <h1 className="admin-title">Reseñas</h1>
+      <AdminPageHeading kicker="MARKETING" title="Reseñas" description="Modera las opiniones recibidas sobre los productos." />
       <div className="admin-toolbar">
         <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
           <option value="">Todas</option>

@@ -1,3 +1,4 @@
+import AdminPageHeading from '@/components/admin/AdminPageHeading';
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '@/services/admin';
 
@@ -10,7 +11,7 @@ export default function AdminAuditPage() {
 
   return (
     <div>
-      <h1 className="admin-title">Auditoría</h1>
+      <AdminPageHeading kicker="SISTEMA" title="Auditoría" description="Consulta la actividad administrativa registrada en la tienda." />
       <div className="admin-card">
         <table className="admin-table">
           <thead><tr><th>Acción</th><th>Usuario</th><th>Entidad</th><th>ID</th><th>Fecha</th></tr></thead>

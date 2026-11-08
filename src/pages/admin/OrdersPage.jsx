@@ -1,3 +1,4 @@
+import AdminPageHeading from '@/components/admin/AdminPageHeading';
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminApi } from '@/services/admin';
@@ -22,7 +23,7 @@ export default function AdminOrdersPage() {
 
   return (
     <div>
-      <h1 className="admin-title">Pedidos</h1>
+      <AdminPageHeading kicker="VENTAS" title="Pedidos" description="Controla las compras, pagos y entregas desde un solo lugar." />
       <div className="admin-toolbar" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
           {STATUSES.map((s) => <option key={s} value={s}>{s ? orderStatusLabel(s) : 'Todos los estados'}</option>)}

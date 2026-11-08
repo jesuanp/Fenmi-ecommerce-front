@@ -111,7 +111,7 @@ export default function App() {
           <Route path="inventory" element={<Lazy><AdminInventoryPage /></Lazy>} />
           <Route path="reviews" element={<Lazy><AdminReviewsPage /></Lazy>} />
           <Route path="coupons" element={<Lazy><AdminCouponsPage /></Lazy>} />
-          <Route path="settings" element={<Lazy><AdminSettingsPage /></Lazy>} />
+          <Route path="settings/*" element={<Lazy><AdminSettingsPage /></Lazy>} />
           <Route path="audit-logs" element={<Lazy><AdminAuditPage /></Lazy>} />
         </Route>
 

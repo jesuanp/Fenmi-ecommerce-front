@@ -1,4 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, Check, CircleAlert, Save } from 'lucide-react';
+import AdminIcon from '@/components/admin/AdminIcon';
+import { ADMIN_SETTINGS_SECTIONS, getAdminSettingsSection } from '@/data/adminSettings';
+import { buildAdminSettingsUpdate, hasAdminSettingsChanges } from '@/utils/adminSettingsPayload';
 import { adminApi } from '@/services/admin';
 import useUI from '@/stores/ui';
 import { MAX_IMAGE_MB, getImageUploadError, prepareImageForUpload, validateImageFile } from '@/utils/imageUpload';
@@ -15,64 +20,87 @@ const BLOCK_TYPES = [
 
 export default function AdminSettingsPage() {
   const ui = useUI();
+  const location = useLocation();
+  const sectionId = location.pathname.split('/')[3] || '';
+  const section = getAdminSettingsSection(sectionId);
   const [settings, setSettings] = useState(null);
+  const baseline = useRef(null);
   const [saving, setSaving] = useState(false);
+  const [loadingError, setLoadingError] = useState('');
   const [uploadingHero, setUploadingHero] = useState(false);
   const [uploadingBlockImage, setUploadingBlockImage] = useState(false);
 
-  useEffect(() => { adminApi.getSettings().then(setSettings); }, []);
+  const loadSettings = async () => {
+    setLoadingError('');
+    try {
+      const result = await adminApi.getSettings();
+      setSettings(result);
+      baseline.current = result;
+    } catch {
+      setLoadingError('No se pudo cargar la configuración. Revisa la conexión e inténtalo nuevamente.');
+    }
+  };
 
-  const set = (section, key, value) =>
-    setSettings((s) => ({ ...s, [section]: { ...(s[section] || {}), [key]: value } }));
+  useEffect(() => { loadSettings(); }, []);
+
+  const set = (sectionName, key, value) =>
+    setSettings((current) => ({ ...current, [sectionName]: { ...(current[sectionName] || {}), [key]: value } }));
 
   const setBank = (which, key, value) =>
-    setSettings((s) => ({
-      ...s,
+    setSettings((current) => ({
+      ...current,
       bankAccounts: {
-        ...(s.bankAccounts || {}),
-        [which]: { ...((s.bankAccounts || {})[which] || {}), [key]: value }
+        ...(current.bankAccounts || {}),
+        [which]: { ...((current.bankAccounts || {})[which] || {}), [key]: value }
       }
     }));
 
-  const setPolicy = (key, value) =>
-    setSettings((s) => ({ ...s, policies: { ...(s.policies || {}), [key]: value } }));
+  const setPolicy = (key, value) => set('policies', key, value);
+  const setFooter = (key, value) => set('footer', key, value);
 
-  const setFooter = (key, value) =>
-    setSettings((s) => ({ ...s, footer: { ...(s.footer || {}), [key]: value } }));
-
-  const setBlocks = (blocks) =>
-    setSettings((s) => ({ ...s, home: { ...(s.home || {}), blocks } }));
+  const setBlocks = (nextBlocks) =>
+    setSettings((current) => ({
+      ...current,
+      home: {
+        ...(current.home || {}),
+        blocks: typeof nextBlocks === 'function' ? nextBlocks(current.home?.blocks || []) : nextBlocks
+      }
+    }));
 
   const setBlock = (idx, patch) =>
-    setBlocks((settings?.home?.blocks || []).map((b, i) => (i === idx ? { ...b, ...patch } : b)));
-
+    setBlocks((blocks) => blocks.map((block, i) => (i === idx ? { ...block, ...patch } : block)));
   const addBlock = () =>
-    setBlocks([...(settings?.home?.blocks || []), { type: 'feature', title: '', eyebrow: '', cta: { label: '', href: '' }, text: '', image: '', params: {} }]);
-
-  const removeBlock = (idx) =>
-    setBlocks((settings?.home?.blocks || []).filter((_, i) => i !== idx));
-
-  const moveBlock = (idx, delta) => {
-    const arr = [...(settings?.home?.blocks || [])];
+    setBlocks((blocks) => [...blocks, { type: 'feature', title: '', eyebrow: '', cta: { label: '', href: '' }, text: '', image: '', params: {} }]);
+  const removeBlock = (idx) => setBlocks((blocks) => blocks.filter((_, i) => i !== idx));
+  const moveBlock = (idx, delta) => setBlocks((blocks) => {
+    const copy = [...blocks];
     const target = idx + delta;
-    if (target < 0 || target >= arr.length) return;
-    [arr[idx], arr[target]] = [arr[target], arr[idx]];
-    setBlocks(arr);
-  };
+    if (target >= 0 && target < copy.length) [copy[idx], copy[target]] = [copy[target], copy[idx]];
+    return copy;
+  });
 
   const setFooterLinks = (links) => setFooter('links', links);
-  const addFooterLink = () => setFooterLinks([...(settings?.footer?.links || []), { label: '', url: '' }]);
+  const addFooterLink = () =>
+    setSettings((current) => ({ ...current, footer: { ...(current.footer || {}), links: [...(current.footer?.links || []), { label: '', url: '' }] } }));
   const removeFooterLink = (idx) =>
-    setFooterLinks((settings?.footer?.links || []).filter((_, i) => i !== idx));
+    setSettings((current) => ({ ...current, footer: { ...(current.footer || {}), links: (current.footer?.links || []).filter((_, i) => i !== idx) } }));
   const setFooterLink = (idx, patch) =>
-    setFooterLinks((settings?.footer?.links || []).map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+    setSettings((current) => ({ ...current, footer: { ...(current.footer || {}), links: (current.footer?.links || []).map((item, i) => i === idx ? { ...item, ...patch } : item) } }));
 
-  const saveAll = async () => {
+  const saveCurrentSection = async () => {
+    if (!section || !settings || saving || uploadingHero || uploadingBlockImage) return;
     setSaving(true);
     try {
-      await adminApi.updateSettings(settings);
-      ui.showToast('Configuración guardada');
-    } catch (error) { ui.showToast(error.response?.data?.error?.message || 'Error al guardar'); } finally { setSaving(false); }
+      const currentServer = section.key === 'home' ? await adminApi.getSettings() : {};
+      const payload = buildAdminSettingsUpdate(section, settings, currentServer);
+      await adminApi.updateSettings(payload);
+      baseline.current = { ...(baseline.current || {}), ...payload };
+      ui.showToast(`${section.label} guardado correctamente`);
+    } catch (error) {
+      ui.showToast(error.response?.data?.error?.message || 'No se pudieron guardar los cambios');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleHeroUpload = async (field, file) => {
@@ -89,7 +117,7 @@ export default function AdminSettingsPage() {
       });
       set('home', field === 'hero' ? 'heroImage' : 'heroImageVertical',
         field === 'hero' ? result.heroUrl : result.heroVerticalUrl);
-      ui.showToast('Imagen subida y optimizada.');
+      ui.showToast('Imagen subida y optimizada. Guarda los cambios para publicarla.');
     } catch (error) {
       ui.showToast(getImageUploadError(error));
     } finally {
@@ -105,7 +133,7 @@ export default function AdminSettingsPage() {
       const prepared = await prepareImageForUpload(file, { maxWidth: 1600, maxHeight: 1100 });
       const result = await adminApi.uploadHero({ hero: prepared });
       setBlock(idx, { image: result.heroUrl });
-      ui.showToast('Imagen subida y optimizada.');
+      ui.showToast('Imagen subida. Guarda los cambios para publicarla.');
     } catch (error) {
       ui.showToast(getImageUploadError(error));
     } finally {
@@ -113,7 +141,37 @@ export default function AdminSettingsPage() {
     }
   };
 
-  if (!settings) return <p>Cargando…</p>;
+  if (loadingError) return (
+    <div className="admin-empty-state" role="alert">
+      <CircleAlert size={28} />
+      <h2>No se pudo abrir la configuración</h2>
+      <p>{loadingError}</p>
+      <button className="admin-button primary" type="button" onClick={loadSettings}>Volver a intentar</button>
+    </div>
+  );
+
+  if (!settings) return <div className="admin-loading-state"><span className="admin-loading-indicator" />Cargando configuración…</div>;
+
+  if (!section) return (
+    <div className="admin-settings-index">
+      <div className="admin-page-heading">
+        <div><div className="admin-eyebrow">AJUSTES DE TU NEGOCIO</div><h1 className="admin-title">Configuración</h1><p>Todo lo necesario para administrar tu tienda, organizado por áreas.</p></div>
+      </div>
+      <div className="admin-settings-intro">
+        <div className="admin-settings-intro-icon"><AdminIcon name="settings" size={24} /></div>
+        <div><strong>Un lugar para cada ajuste</strong><p>Abre una sección, haz los cambios y guárdalos sin modificar las demás áreas.</p></div>
+      </div>
+      <div className="admin-settings-grid">
+        {ADMIN_SETTINGS_SECTIONS.map((item) => (
+          <Link to={`/admin/settings/${item.id}`} key={item.id} className="admin-settings-tile">
+            <span className="admin-settings-tile-icon"><AdminIcon name={item.icon} size={22} /></span>
+            <div className="admin-settings-tile-content"><h2>{item.label}</h2><p>{item.description}</p></div>
+            <ArrowRight className="admin-settings-tile-arrow" size={19} />
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
 
   const general = settings.storeGeneral || {};
   const shipping = settings.shipping || {};
@@ -125,13 +183,24 @@ export default function AdminSettingsPage() {
   const policies = settings.policies || {};
   const footer = settings.footer || {};
   const blocks = settings.home?.blocks || [];
+  const hasChanges = hasAdminSettingsChanges(section, settings, baseline.current);
 
   return (
-    <div>
-      <h1 className="admin-title">Configuración</h1>
+    <div className="admin-settings-page">
+      <div className="admin-page-heading admin-settings-page-heading">
+        <div>
+          <Link className="admin-back-link" to="/admin/settings"><ArrowLeft size={15} /> Todas las configuraciones</Link>
+          <div className="admin-eyebrow">CONFIGURACIÓN / {section.shortLabel.toUpperCase()}</div>
+          <h1 className="admin-title">{section.label}</h1>
+          <p>{section.description}</p>
+        </div>
+        <span className="admin-settings-heading-icon"><AdminIcon name={section.icon} size={27} /></span>
+      </div>
 
+      <div className="admin-settings-editor">
+      {section.id === 'general' && (
       <div className="admin-card">
-        <h3 style={{ marginBottom: 12 }}>Tienda</h3>
+        <h3 style={{ marginBottom: 12 }}>Información de contacto</h3>
         <div className="form-grid">
           <div className="afield"><label>Nombre</label><input value={general.name || ''} onChange={(e) => set('storeGeneral', 'name', e.target.value)} /></div>
           <div className="afield"><label>Email</label><input value={general.email || ''} onChange={(e) => set('storeGeneral', 'email', e.target.value)} /></div>
@@ -139,20 +208,22 @@ export default function AdminSettingsPage() {
           <div className="afield"><label>WhatsApp</label><input value={general.whatsapp || ''} onChange={(e) => set('storeGeneral', 'whatsapp', e.target.value)} /></div>
         </div>
       </div>
+      )}
 
+      {section.id === 'portada' && (
       <div className="admin-card">
-        <h3 style={{ marginBottom: 12 }}>Portada (Hero)</h3>
+        <h3 style={{ marginBottom: 12 }}>Imágenes del banner principal</h3>
         <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 14 }}>
           Sube imágenes de hasta {MAX_IMAGE_MB} MB. Se optimizan antes de enviarlas y se muestran en escritorio y celular.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        <div className="admin-hero-grid">
           <div>
             <p style={{ fontSize: 12, marginBottom: 8, fontWeight: 500 }}>Imagen desktop</p>
             {settings.home?.heroImage && (
               <img
                 src={settings.home.heroImage}
                 alt="Imagen principal de escritorio"
-                style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 4, marginBottom: 8 }}
+                className="admin-hero-preview"
               />
             )}
             <label className="btn" style={{ cursor: 'pointer', display: 'inline-block' }}>
@@ -172,7 +243,7 @@ export default function AdminSettingsPage() {
               <img
                 src={settings.home.heroImageVertical}
                 alt="Imagen principal de móvil"
-                style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 4, marginBottom: 8 }}
+                className="admin-hero-preview"
               />
             )}
             <label className="btn" style={{ cursor: 'pointer', display: 'inline-block' }}>
@@ -188,17 +259,19 @@ export default function AdminSettingsPage() {
           </div>
         </div>
       </div>
+      )}
 
+      {section.id === 'bloques' && (
       <div className="admin-card">
-        <h3 style={{ marginBottom: 12 }}>Bloques del Home</h3>
+        <h3 style={{ marginBottom: 12 }}>Secciones de la página de inicio</h3>
         <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 14 }}>
           Cada bloque define una sección de la portada. Puedes reordenarlos, agregar o eliminar. La imagen se
           sube al servidor de la tienda.
         </p>
         {blocks.length === 0 && <p style={{ color: 'var(--mid)', fontSize: 13 }}>No hay bloques definidos.</p>}
         {blocks.map((b, idx) => (
-          <div key={idx} style={{ border: '1px solid var(--line, #eee)', borderRadius: 8, padding: 12, marginBottom: 12, background: '#fafafa' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div key={idx} className="admin-block-card">
+            <div className="admin-block-head">
               <strong style={{ fontSize: 13 }}>Bloque #{idx + 1}</strong>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="btn-sm" type="button" onClick={() => moveBlock(idx, -1)} disabled={idx === 0}>↑</button>
@@ -281,9 +354,11 @@ export default function AdminSettingsPage() {
         ))}
         <button className="btn outline small" type="button" onClick={addBlock}>+ Agregar bloque</button>
       </div>
+      )}
 
+      {section.id === 'pagos' && (
       <div className="admin-card">
-        <h3 style={{ marginBottom: 12 }}>Cuentas de pago manual (Nequi / Bancolombia)</h3>
+        <h3 style={{ marginBottom: 12 }}>Cuentas para transferencias manuales</h3>
         <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 14 }}>
           Esta información se muestra al cliente en la página de éxito del checkout. El cliente realiza la transferencia
           y sube la captura del comprobante para que un admin la apruebe.
@@ -307,9 +382,11 @@ export default function AdminSettingsPage() {
           </div>
         </div>
       </div>
+      )}
 
+      {section.id === 'envios' && (
       <div className="admin-card">
-        <h3 style={{ marginBottom: 12 }}>Envíos</h3>
+        <h3 style={{ marginBottom: 12 }}>Transportadoras y tarifas de entrega</h3>
         <div className="form-grid">
           <div className="afield"><label>Envío gratis desde (COP)</label><input type="number" value={shipping.freeShippingThreshold || ''} onChange={(e) => set('shipping', 'freeShippingThreshold', Number(e.target.value) || 0)} /></div>
           <div className="afield" style={{ gridColumn: '1 / -1' }}>
@@ -318,7 +395,9 @@ export default function AdminSettingsPage() {
         </div>
         <ColombiaShippingAdmin value={shipping.colombia} onChange={(next) => set('shipping', 'colombia', next)} />
       </div>
+      )}
 
+      {section.id === 'politicas' && (
       <div className="admin-card">
         <h3 style={{ marginBottom: 12 }}>Políticas</h3>
         <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 14 }}>
@@ -343,7 +422,9 @@ export default function AdminSettingsPage() {
           </div>
         </div>
       </div>
+      )}
 
+      {section.id === 'footer' && (
       <div className="admin-card">
         <h3 style={{ marginBottom: 12 }}>Pie de página</h3>
         <div className="form-grid">
@@ -359,7 +440,7 @@ export default function AdminSettingsPage() {
         <div style={{ marginTop: 14 }}>
           <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 8 }}>Links del footer</p>
           {(footer.links || []).map((l, idx) => (
-            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+            <div key={idx} className="admin-footer-link-row">
               <input
                 value={l.label || ''}
                 onChange={(e) => setFooterLink(idx, { label: e.target.value })}
@@ -376,26 +457,39 @@ export default function AdminSettingsPage() {
           <button className="btn outline small" type="button" onClick={addFooterLink}>+ Agregar link</button>
         </div>
       </div>
+      )}
 
+      {section.id === 'redes' && (
       <div className="admin-card">
-        <h3 style={{ marginBottom: 12 }}>Redes</h3>
+        <h3 style={{ marginBottom: 12 }}>Perfiles sociales</h3>
         <div className="form-grid">
           <div className="afield"><label>Instagram</label><input value={social.instagram || ''} onChange={(e) => set('social', 'instagram', e.target.value)} /></div>
           <div className="afield"><label>TikTok</label><input value={social.tiktok || ''} onChange={(e) => set('social', 'tiktok', e.target.value)} /></div>
         </div>
       </div>
+      )}
 
+      {section.id === 'seo' && (
       <div className="admin-card">
-        <h3 style={{ marginBottom: 12 }}>SEO</h3>
+        <h3 style={{ marginBottom: 12 }}>Título y descripción para buscadores</h3>
         <div className="form-grid">
           <div className="afield"><label>Título</label><input value={seo.title || ''} onChange={(e) => set('seo', 'title', e.target.value)} /></div>
           <div className="afield"><label>Descripción</label><input value={seo.description || ''} onChange={(e) => set('seo', 'description', e.target.value)} /></div>
         </div>
       </div>
+      )}
 
-      <button className="btn lime" onClick={saveAll} disabled={saving}>
-        {saving ? 'Guardando…' : 'Guardar configuración'}
-      </button>
+      </div>
+      <div className="admin-settings-savebar">
+        <div className="admin-settings-save-message">
+          <span className={`admin-save-state${hasChanges ? ' is-dirty' : ''}`}><span />{hasChanges ? 'Cambios sin guardar' : 'Sección al día'}</span>
+          <small>Solo se guarda esta sección. Los demás ajustes permanecen intactos.</small>
+        </div>
+        <button className="admin-button primary" type="button" onClick={saveCurrentSection} disabled={saving || uploadingHero || uploadingBlockImage || !hasChanges}>
+          {hasChanges ? <Save size={17} /> : <Check size={17} />}
+          {saving ? 'Guardando…' : hasChanges ? 'Guardar cambios' : 'Sin cambios'}
+        </button>
+      </div>
     </div>
   );
 }
